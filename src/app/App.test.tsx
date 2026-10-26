@@ -1,9 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createFakeSupabaseClient } from '../test/fakeSupabaseClient';
-import { App, PrimaryNavigation } from './App';
+import { App } from './App';
+import { Masthead } from './Masthead';
+import { TabBar } from './TabBar';
 
 describe('application shell', () => {
   it('routes an unauthenticated visitor to private sign-in', async () => {
@@ -15,22 +17,43 @@ describe('application shell', () => {
     expect(screen.queryByRole('link', { name: 'Sign up' })).not.toBeInTheDocument();
   });
 
-  it('provides compact, accessible icon navigation', () => {
+  it('highlights the current section in the masthead and the tab bar', () => {
     const onSignOut = vi.fn();
+    const onMore = vi.fn();
 
     render(
       <MemoryRouter initialEntries={['/reviewed']}>
-        <PrimaryNavigation onSignOut={onSignOut} />
+        <Masthead onSignOut={onSignOut} />
+        <TabBar onMore={onMore} />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('link', { name: 'Capture' })).toHaveAttribute('title', 'Capture');
-    expect(screen.getByRole('link', { name: 'Library' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('button', { name: 'Sign out' })).toHaveAttribute('title', 'Sign out');
-    expect(document.querySelectorAll('.nav-icon')).toHaveLength(3);
+    const [mastheadNav, tabBar] = screen.getAllByRole('navigation', { name: 'Sections' });
+    for (const nav of [mastheadNav, tabBar]) {
+      expect(within(nav!).getByRole('link', { name: 'Reviewed' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+      expect(within(nav!).getByRole('link', { name: 'Inbox' })).not.toHaveAttribute('aria-current');
+    }
+    expect(screen.getAllByRole('link', { name: 'New capture' })).toHaveLength(2);
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     expect(onSignOut).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    expect(onMore).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the section a capture was opened from highlighted', () => {
+    render(
+      <MemoryRouter
+        initialEntries={[{ pathname: '/captures/capture-id', state: { section: '/archived' } }]}
+      >
+        <Masthead onSignOut={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: 'Archived' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('offers a skip link and names the page in the document title', async () => {

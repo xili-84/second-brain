@@ -12,125 +12,6 @@ main {
   margin: clamp(4rem, 12vh, 8rem) auto 2rem;
 }
 
-.network-banner {
-  padding: 0.75rem 1rem;
-  color: #2b150f;
-  background: #ffb39f;
-  font-size: 0.875rem;
-  font-weight: 700;
-  text-align: center;
-}
-
-.update-banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  padding: 0.7rem 1rem;
-  border-bottom: 1px solid rgba(234, 240, 255, 0.14);
-  color: #eaf0ff;
-  background: #102955;
-  font-size: 0.875rem;
-  font-weight: 700;
-  text-align: center;
-}
-
-.update-banner-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.update-banner button {
-  padding: 0.35rem 0.65rem;
-  border: 1px solid rgba(234, 240, 255, 0.22);
-  border-radius: 0.5rem;
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.07);
-  font-weight: 750;
-  cursor: pointer;
-}
-
-.update-banner button:first-child {
-  border-color: #ff8060;
-  color: #27120d;
-  background: #ff8060;
-}
-
-.update-banner button:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.site-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: min(70rem, calc(100% - 2rem));
-  margin: 0 auto;
-  padding: 1.25rem 0;
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.75rem;
-  font-weight: 750;
-  letter-spacing: -0.02em;
-  text-decoration: none;
-}
-
-.brand img {
-  border-radius: 0.75rem;
-}
-
-.site-nav {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: #c9d4ee;
-}
-
-.nav-icon-action {
-  display: inline-flex;
-  width: 2.75rem;
-  height: 2.75rem;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 0.75rem;
-  color: #aebddd;
-  background: transparent;
-  cursor: pointer;
-  text-decoration: none;
-  transition:
-    color 140ms ease,
-    border-color 140ms ease,
-    background 140ms ease;
-}
-
-.nav-icon-action:hover,
-.nav-icon-action--active {
-  border-color: rgba(234, 240, 255, 0.16);
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.nav-icon-action--sign-out:hover {
-  border-color: rgba(255, 128, 96, 0.28);
-  color: #ff9d83;
-  background: rgba(255, 128, 96, 0.09);
-}
-
-.nav-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .workspace-panel {
   width: min(54rem, 100%);
   margin-top: clamp(2rem, 6vh, 4rem);
@@ -651,8 +532,6 @@ textarea:focus {
 }
 
 .text-link:focus-visible,
-.brand:focus-visible,
-.nav-icon-action:focus-visible,
 button:focus-visible,
 .primary-button:focus-visible,
 .secondary-button:focus-visible {
@@ -902,26 +781,6 @@ button:focus-visible,
   }
 }
 @media (max-width: 34rem) {
-  .update-banner {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 0.6rem;
-  }
-
-  .update-banner-actions {
-    justify-content: center;
-  }
-
-  .site-header {
-    align-items: flex-start;
-  }
-
-  .site-nav {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.6rem;
-  }
-
   .section-heading {
     align-items: flex-start;
     flex-direction: column;

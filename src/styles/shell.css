@@ -1,0 +1,350 @@
+/* App shell: masthead, bottom tab bar, focused-screen top bar, sheets. */
+
+.app-shell {
+  min-height: 100vh;
+  padding-right: var(--safe-right);
+  padding-left: var(--safe-left);
+}
+
+@supports (min-height: 100dvh) {
+  .app-shell {
+    min-height: 100dvh;
+  }
+}
+
+.app-shell--tabbed main {
+  padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--space-6));
+}
+
+/* ---------- Masthead ---------- */
+
+.masthead {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding-top: var(--safe-top);
+  border-bottom: var(--rule-hair) solid var(--rule);
+}
+
+.masthead__inner {
+  display: flex;
+  height: var(--bar-h);
+  align-items: center;
+  gap: var(--space-6);
+  width: min(var(--measure), calc(100% - 2 * var(--gutter)));
+  margin: 0 auto;
+}
+
+.masthead__brand {
+  display: inline-flex;
+  min-height: var(--tap);
+  align-items: center;
+  text-decoration: none;
+}
+
+.masthead__date {
+  margin-left: auto;
+  color: var(--ink-3);
+  font: var(--text-meta);
+}
+
+.masthead__nav,
+.masthead__actions {
+  display: none;
+}
+
+@media (max-width: 47.99rem) {
+  /* Capture screens bring their own top bar on phones. */
+  .masthead--wide-only {
+    display: none;
+  }
+}
+
+@media (min-width: 48rem) {
+  .masthead__inner {
+    height: 4rem;
+  }
+
+  .masthead__date {
+    display: none;
+  }
+
+  .masthead__nav {
+    display: flex;
+    align-self: stretch;
+    gap: var(--space-5);
+  }
+
+  .masthead__link {
+    display: inline-flex;
+    align-items: center;
+    padding-top: var(--rule-heavy);
+    border-bottom: var(--rule-heavy) solid transparent;
+    color: var(--ink-2);
+    font: var(--text-label);
+    text-decoration: none;
+  }
+
+  .masthead__link:hover {
+    color: var(--ink);
+  }
+
+  .masthead__link[aria-current='page'] {
+    border-bottom-color: var(--accent);
+    color: var(--ink);
+  }
+
+  .masthead__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-left: auto;
+  }
+}
+
+/* ---------- Bottom tab bar (phones) ---------- */
+
+.tabbar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  display: flex;
+  height: calc(var(--tabbar-h) + var(--safe-bottom));
+  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+  border-top: var(--rule-hair) solid var(--rule);
+}
+
+.tab {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1875rem;
+  padding: 0;
+  border: 0;
+  color: var(--ink-3);
+  background: transparent;
+  font: var(--text-tab);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tab .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.tab[aria-current='page'] {
+  color: var(--ink);
+}
+
+.tab[aria-current='page'] .icon {
+  stroke-width: 2.25;
+}
+
+.tab--new {
+  justify-content: center;
+}
+
+.tab__new-button {
+  display: inline-flex;
+  width: 3rem;
+  height: 3rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.tab__new-button .icon {
+  stroke-width: 2.25;
+}
+
+@media (min-width: 48rem) {
+  .tabbar {
+    display: none;
+  }
+
+  .app-shell--tabbed main {
+    padding-bottom: var(--space-12);
+  }
+}
+
+/* ---------- Top bar for focused screens (capture detail, composer) ---------- */
+
+.top-bar {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  min-height: calc(var(--bar-h) + var(--safe-top));
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0 calc(-1 * var(--space-3));
+  padding: var(--safe-top) var(--space-1) 0;
+}
+
+.top-bar__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font: var(--text-title);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-bar__spacer {
+  flex: 1;
+}
+
+.top-bar__back {
+  display: inline-flex;
+  min-height: var(--tap);
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  font: var(--text-label);
+  text-decoration: none;
+}
+
+.top-bar__back:hover {
+  background: var(--bg-sunken);
+}
+
+@media (min-width: 48rem) {
+  /* Wide screens keep the masthead, so the top bar scrolls with the page. */
+  .top-bar {
+    position: static;
+    min-height: var(--bar-h);
+    margin-top: var(--space-4);
+    padding-top: 0;
+    background: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* ---------- Sheets ---------- */
+
+body.has-sheet {
+  overflow: hidden;
+}
+
+.sheet-layer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 50;
+}
+
+.sheet-backdrop {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--scrim);
+}
+
+.sheet {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: var(--space-3) calc(var(--space-4) + var(--safe-right))
+    calc(var(--space-4) + var(--safe-bottom)) calc(var(--space-4) + var(--safe-left));
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  animation: sheet-in 180ms var(--ease);
+}
+
+.sheet:focus {
+  outline: none;
+}
+
+.sheet::before {
+  content: '';
+  align-self: center;
+  width: 2.25rem;
+  height: 0.25rem;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--rule);
+}
+
+.sheet__title {
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  font: var(--text-title);
+}
+
+.sheet__text {
+  padding: 0 var(--space-2) var(--space-3);
+  color: var(--ink-2);
+}
+
+.sheet__item {
+  display: flex;
+  min-height: 3.25rem;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  font: var(--text-label);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sheet__item:hover {
+  background: var(--bg-sunken);
+}
+
+.sheet__item--danger {
+  color: var(--danger);
+}
+
+.sheet .btn + .btn {
+  margin-top: var(--space-2);
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(1.5rem);
+    opacity: 0;
+  }
+}
+
+@media (min-width: 48rem) {
+  .sheet {
+    top: 50%;
+    right: auto;
+    bottom: auto;
+    left: 50%;
+    width: 26rem;
+    padding: var(--space-5);
+    border-radius: var(--radius-lg);
+    transform: translate(-50%, -50%);
+    animation: none;
+  }
+
+  .sheet::before {
+    display: none;
+  }
+}

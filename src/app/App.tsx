@@ -1,13 +1,8 @@
 import { useEffect, useState } from 'react';
-import {
-  BrowserRouter,
-  Link,
-  Navigate,
-  NavLink,
-  Route,
-  Routes,
-  useLocation,
-} from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+
+import { EmptyState } from '../components/EmptyState';
+import { Wordmark } from '../components/Wordmark';
 
 import { AuthProvider } from '../features/auth/AuthProvider';
 import { useAuth } from '../features/auth/authContext';
@@ -19,7 +14,11 @@ import { QuickCapturePage } from '../features/capture/QuickCapturePage';
 import { CaptureListPage, InboxPage } from '../features/inbox/InboxPage';
 import { PendingShareProvider } from '../features/share-target/PendingShareProvider';
 import type { SecondBrainClient } from '../lib/supabase/client';
+import { Masthead } from './Masthead';
+import { MoreSheet } from './MoreSheet';
+import { isFocusedScreen } from './navigation';
 import { applyPwaUpdate, subscribeToPwaUpdates } from './pwaUpdate';
+import { TabBar } from './TabBar';
 
 function useOnlineStatus() {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
@@ -98,49 +97,56 @@ function Shell() {
     }
   }
 
+  const { pathname } = useLocation();
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const showChrome = !isRestoring && Boolean(session) && pathname !== '/login';
+  const showTabBar = showChrome && !isFocusedScreen(pathname);
+
+  // Close the More sheet whenever the screen changes (for example after signing out).
+  useEffect(() => setIsMoreOpen(false), [pathname, session]);
+
   return (
-    <div className="app-shell">
+    <div className={showTabBar ? 'app-shell app-shell--tabbed' : 'app-shell'}>
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
       {!isOnline && (
-        <div className="network-banner" role="alert">
-          You are offline. Saving and loading captures requires an internet connection.
+        <div className="banner" role="alert">
+          You’re offline. Saving and loading captures needs an internet connection.
         </div>
       )}
 
       {signOutError && (
-        <div className="network-banner" role="alert">
+        <div className="banner" role="alert">
           {signOutError}
         </div>
       )}
 
       {isPwaUpdateAvailable && (
-        <div className="update-banner" role="status">
+        <div className="banner" role="status">
           <span>A new version is ready. Save any edits before updating.</span>
-          <div className="update-banner-actions">
-            <button disabled={isUpdatingPwa} onClick={() => void handlePwaUpdate()} type="button">
+          <span className="banner__actions">
+            <button
+              className="banner__button"
+              disabled={isUpdatingPwa}
+              onClick={() => void handlePwaUpdate()}
+              type="button"
+            >
               {isUpdatingPwa ? 'Updating…' : 'Update now'}
             </button>
             <button
+              className="banner__button"
               disabled={isUpdatingPwa}
               onClick={() => setIsPwaUpdateAvailable(false)}
               type="button"
             >
               Later
             </button>
-          </div>
+          </span>
         </div>
       )}
 
-      <header className="site-header">
-        <Link className="brand" to={session ? '/capture' : '/login'} aria-label="Second Brain home">
-          <img src="/icons/icon-192.png" alt="" width="40" height="40" />
-          <span>Second Brain</span>
-        </Link>
-
-        {!isRestoring && session && <PrimaryNavigation onSignOut={() => void handleSignOut()} />}
-      </header>
+      {showChrome && <Masthead onSignOut={() => void handleSignOut()} />}
 
       <main id="main-content" tabIndex={-1}>
         <Routes>
@@ -192,64 +198,17 @@ function Shell() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
-    </div>
-  );
-}
 
-export function PrimaryNavigation({ onSignOut }: { onSignOut: () => void }) {
-  const location = useLocation();
-  const isLibrarySection =
-    location.pathname === '/inbox' ||
-    location.pathname === '/reviewed' ||
-    location.pathname === '/archived' ||
-    location.pathname.startsWith('/captures/');
+      {showTabBar && <TabBar onMore={() => setIsMoreOpen(true)} />}
 
-  return (
-    <nav className="site-nav" aria-label="Primary navigation">
-      <NavLink
-        className={({ isActive }) =>
-          isActive ? 'nav-icon-action nav-icon-action--active' : 'nav-icon-action'
-        }
-        title="Capture"
-        to="/capture"
-      >
-        <NavigationIcon name="capture" />
-        <span className="visually-hidden">Capture</span>
-      </NavLink>
-      <Link
-        aria-current={isLibrarySection ? 'page' : undefined}
-        className={isLibrarySection ? 'nav-icon-action nav-icon-action--active' : 'nav-icon-action'}
-        title="Library"
-        to="/inbox"
-      >
-        <NavigationIcon name="library" />
-        <span className="visually-hidden">Library</span>
-      </Link>
-      <button
-        className="nav-icon-action nav-icon-action--sign-out"
-        onClick={onSignOut}
-        title="Sign out"
-        type="button"
-      >
-        <NavigationIcon name="sign-out" />
-        <span className="visually-hidden">Sign out</span>
-      </button>
-    </nav>
-  );
-}
-
-function NavigationIcon({ name }: { name: 'capture' | 'library' | 'sign-out' }) {
-  return (
-    <svg aria-hidden="true" className="nav-icon" fill="none" viewBox="0 0 24 24">
-      {name === 'capture' && <path d="M12 5v14M5 12h14" />}
-      {name === 'library' && <path d="M4 7h6l2 2h8v9H4V7Z" />}
-      {name === 'sign-out' && (
-        <>
-          <path d="M10 5H5v14h5" />
-          <path d="m14 8 4 4-4 4m4-4H9" />
-        </>
+      {isMoreOpen && (
+        <MoreSheet
+          email={session?.user.email}
+          onClose={() => setIsMoreOpen(false)}
+          onSignOut={() => void handleSignOut()}
+        />
       )}
-    </svg>
+    </div>
   );
 }
 
@@ -258,24 +217,28 @@ function HomeRedirect() {
 
   if (isRestoring) {
     return (
-      <section className="message-panel" aria-live="polite">
-        <p className="eyebrow">Private knowledge capture</p>
-        <h1>Opening Second Brain…</h1>
+      <section aria-live="polite" className="center-state">
+        <Wordmark large />
+        <p>Opening Second Brain…</p>
       </section>
     );
   }
 
-  return <Navigate replace to={session ? '/capture' : '/login'} />;
+  return <Navigate replace to={session ? '/inbox' : '/login'} />;
 }
 
 function NotFound() {
   return (
-    <section className="message-panel">
-      <p className="eyebrow">Not found</p>
-      <h1>This page does not exist.</h1>
-      <Link className="text-link" to="/">
-        Return home
-      </Link>
+    <section className="page">
+      <EmptyState
+        action={
+          <Link className="btn btn--secondary" to="/">
+            Go to Inbox
+          </Link>
+        }
+        headingLevel="h1"
+        title="This page doesn’t exist"
+      />
     </section>
   );
 }
