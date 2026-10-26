@@ -44,7 +44,9 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - run: deno check supabase/functions/link-preview/index.ts
+      # Run from the function folder so its deno.json (no node_modules) and deno.lock apply.
+      - run: deno check index.ts
+        working-directory: supabase/functions/link-preview
 
   android:
     name: Android debug build

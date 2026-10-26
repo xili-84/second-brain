@@ -14,7 +14,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check:edge": "deno check supabase/functions/link-preview/index.ts",
+    "check:edge": "cd supabase/functions/link-preview && deno check index.ts",
     "edge:bundle": "node scripts/bundle-edge-function.mjs",
     "cap:sync": "npm run build && cap sync android",
     "android:check": "npm run cap:sync && node scripts/gradlew.mjs lintDebug assembleDebug",
