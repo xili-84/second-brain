@@ -298,6 +298,25 @@ body.has-sheet {
   color: var(--ink-2);
 }
 
+.sheet__section {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3) var(--space-2) var(--space-4);
+  border-top: var(--rule-hair) solid var(--rule);
+  border-bottom: var(--rule-hair) solid var(--rule);
+}
+
+.sheet__section .segmented {
+  margin: 0;
+}
+
+.sheet__label {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-3);
+  font: var(--text-kicker);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+}
+
 .sheet__item {
   display: flex;
   min-height: 3.25rem;

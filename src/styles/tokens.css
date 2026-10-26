@@ -2,7 +2,8 @@
  * Second Brain design tokens: the "Editorial" direction.
  *
  * Components use only these custom properties, never raw colours or sizes, so a theme change is a
- * token change. Light is the default; dark follows the system setting.
+ * token change. Light is the default; dark follows the system setting unless the user picked a
+ * theme in Account settings, which sets <html data-theme="light|dark"> (see src/app/theme.ts).
  *
  * Compatibility: the Huawei WebView can be old, so tokens avoid color-mix(), relative colours and
  * other recent syntax. Translucent "glass" bars have a solid fallback (see base.css).
@@ -97,8 +98,45 @@
   --shadow-segment: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
+/*
+ * Dark palette. It is written twice on purpose: once for an explicit choice (data-theme="dark")
+ * and once for "System" when the device is dark. Plain CSS cannot share one block between a
+ * selector and a media query without newer syntax, and old WebViews need the simple form.
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0f0f10;
+  --bg-glass: rgba(15, 15, 16, 0.92);
+  --bg-sunken: #1b1b1d;
+  --surface: #18181a;
+  --ink: #f3f3f1; /* 17.2:1 */
+  --ink-2: #b9b9b5; /* 9.7:1 */
+  --ink-3: #8e8e8a; /* 5.8:1 (5.2:1 on --bg-sunken) */
+  --rule: #2a2a2c;
+  --rule-strong: #f3f3f1;
+  --field-border: #6c6c6c; /* 3.6:1 */
+  --accent: #ff5468; /* 6.1:1 */
+  --primary: #f3f3f1;
+  --on-primary: #0f0f10;
+  --success: #4cc985;
+  --success-soft: #10291c;
+  --danger: #ff5468;
+  --danger-soft: #3a1419;
+  --on-danger: #0f0f10;
+  --highlight: #5c4a00;
+  --focus: #7aa7ff;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 0.5rem 2rem rgba(0, 0, 0, 0.5);
+  --shadow-segment: none;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
     --bg: #0f0f10;
     --bg-glass: rgba(15, 15, 16, 0.92);
     --bg-sunken: #1b1b1d;

@@ -1,4 +1,4 @@
-import { LogOut, Plus } from 'lucide-react';
+import { CircleUser, Plus } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 import { Wordmark } from '../components/Wordmark';
@@ -11,7 +11,7 @@ const todayFormat = new Intl.DateTimeFormat(undefined, {
 });
 
 /** Top bar: wordmark and date on phones; wordmark, sections and actions on wide screens. */
-export function Masthead({ onSignOut }: { onSignOut: () => void }) {
+export function Masthead({ onAccount }: { onAccount: () => void }) {
   const { pathname, state } = useLocation();
   const activePath = activeSectionPath(pathname, state);
 
@@ -45,9 +45,15 @@ export function Masthead({ onSignOut }: { onSignOut: () => void }) {
             <Plus aria-hidden="true" className="icon" />
             New capture
           </Link>
-          <button className="icon-btn" onClick={onSignOut} title="Sign out" type="button">
-            <LogOut aria-hidden="true" className="icon" />
-            <span className="visually-hidden">Sign out</span>
+          <button
+            aria-haspopup="dialog"
+            className="icon-btn"
+            onClick={onAccount}
+            title="Account and appearance"
+            type="button"
+          >
+            <CircleUser aria-hidden="true" className="icon" />
+            <span className="visually-hidden">Account and appearance</span>
           </button>
         </div>
       </div>

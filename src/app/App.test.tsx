@@ -19,12 +19,12 @@ describe('application shell', () => {
   });
 
   it('highlights the current section in the masthead and the tab bar', () => {
-    const onSignOut = vi.fn();
+    const onAccount = vi.fn();
     const onMore = vi.fn();
 
     render(
       <MemoryRouter initialEntries={['/reviewed']}>
-        <Masthead onSignOut={onSignOut} />
+        <Masthead onAccount={onAccount} />
         <TabBar onMore={onMore} />
       </MemoryRouter>,
     );
@@ -39,8 +39,8 @@ describe('application shell', () => {
     }
     expect(screen.getAllByRole('link', { name: 'New capture' })).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
-    expect(onSignOut).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Account and appearance' }));
+    expect(onAccount).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     expect(onMore).toHaveBeenCalledTimes(1);
   });
@@ -50,7 +50,7 @@ describe('application shell', () => {
       <MemoryRouter
         initialEntries={[{ pathname: '/captures/capture-id', state: { section: '/archived' } }]}
       >
-        <Masthead onSignOut={vi.fn()} />
+        <Masthead onAccount={vi.fn()} />
       </MemoryRouter>,
     );
 

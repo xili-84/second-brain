@@ -146,7 +146,7 @@ function Shell() {
         </div>
       )}
 
-      {showChrome && <Masthead onSignOut={() => void handleSignOut()} />}
+      {showChrome && <Masthead onAccount={() => setIsMoreOpen(true)} />}
 
       <main id="main-content" tabIndex={-1}>
         <Routes>

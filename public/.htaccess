@@ -30,7 +30,7 @@ RewriteRule ^ index.html [L]
   Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: __SUPABASE_ORIGIN__; connect-src 'self' __SUPABASE_ORIGIN__ __SUPABASE_WS_ORIGIN__; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
 
   # The app shell and service worker must be revalidated so updates are picked up.
-  <FilesMatch "^(index\.html|sw\.js|manifest\.webmanifest|registerSW\.js)$">
+  <FilesMatch "^(index\.html|sw\.js|manifest\.webmanifest|registerSW\.js|theme-init\.js)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
 
