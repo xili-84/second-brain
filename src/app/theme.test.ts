@@ -162,6 +162,13 @@ describe('dark palette', () => {
 });
 
 describe('appearance switch', () => {
+  it('focuses the saved choice when the sheet opens', () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'dark');
+    render(createElement(MoreSheet, { email: undefined, onClose: vi.fn(), onSignOut: vi.fn() }));
+    expect(screen.getByRole('radio', { name: 'Dark' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Dark' })).toHaveFocus();
+  });
+
   it('lives in the account sheet and applies the choice at once', () => {
     render(
       createElement(MoreSheet, { email: 'awa@example.com', onClose: vi.fn(), onSignOut: vi.fn() }),
@@ -170,6 +177,8 @@ describe('appearance switch', () => {
     const group = screen.getByRole('group', { name: 'Appearance' });
     expect(group).toBeVisible();
     expect(screen.getByRole('radio', { name: 'System' })).toBeChecked();
+    // Opening the sheet focuses the checked option, as Tab into a radio group would.
+    expect(screen.getByRole('radio', { name: 'System' })).toHaveFocus();
 
     fireEvent.click(screen.getByRole('radio', { name: 'Light' }));
     expect(screen.getByRole('radio', { name: 'Light' })).toBeChecked();

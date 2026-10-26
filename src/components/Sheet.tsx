@@ -4,8 +4,18 @@ import { createPortal } from 'react-dom';
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/** Focusable elements in order. Like the browser, a radio group counts once: its checked radio. */
 function focusableIn(node: HTMLElement) {
-  return Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE));
+  const radios = Array.from(node.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
+  return Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (element) =>
+      !(
+        element instanceof HTMLInputElement &&
+        element.type === 'radio' &&
+        !element.checked &&
+        radios.some((radio) => radio.name === element.name && radio.checked)
+      ),
+  );
 }
 
 type SheetProps = {
