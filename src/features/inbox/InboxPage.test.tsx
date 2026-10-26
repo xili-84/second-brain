@@ -1,5 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -7,8 +7,8 @@ import type { SecondBrainClient } from '../../lib/supabase/client';
 import { AuthContext } from '../auth/authContext';
 import { InboxPage } from './InboxPage';
 
-describe('Windows inbox', () => {
-  it('renders the current user’s newest inbox captures', async () => {
+describe('inbox list', () => {
+  it('renders the newest inbox captures as rows with previews and one batched thumbnail request', async () => {
     const order = vi.fn().mockResolvedValue({
       data: [
         {
@@ -43,8 +43,20 @@ describe('Windows inbox', () => {
     });
     const eq = vi.fn().mockReturnValue({ order });
     const select = vi.fn().mockReturnValue({ eq });
+    const createSignedUrls = vi.fn().mockResolvedValue({
+      data: [
+        {
+          error: null,
+          path: 'user/image-id/attachment.png',
+          signedUrl: 'https://storage.test/signed/attachment.png',
+        },
+      ],
+      error: null,
+    });
+    const storageFrom = vi.fn().mockReturnValue({ createSignedUrls });
     const client = {
       from: vi.fn().mockReturnValue({ select }),
+      storage: { from: storageFrom },
     } as unknown as SecondBrainClient;
     const session = {
       user: { id: '8cfd9d8f-dde8-4ec3-b7d8-2fcb4241240d' },
@@ -61,14 +73,28 @@ describe('Windows inbox', () => {
     expect(await screen.findByText('Reference')).toBeVisible();
     expect(screen.getByText('Long note title')).toBeVisible();
     expect(screen.getByText('Receipt')).toBeVisible();
-    expect(screen.queryByText('Remember this')).not.toBeInTheDocument();
+    // Notes show a preview; image notes stay private in lists.
+    expect(screen.getByText('Remember this')).toBeVisible();
     expect(
       screen.queryByText('Private image note that should stay hidden'),
     ).not.toBeInTheDocument();
+
+    // Thumbnails are decorative (empty alt) and signed in one batch for the list on screen.
+    await waitFor(() =>
+      expect(
+        document.querySelector('img[src="https://storage.test/signed/attachment.png"]'),
+      ).toHaveAttribute('alt', ''),
+    );
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(storageFrom).toHaveBeenCalledWith('capture-images');
+    expect(createSignedUrls).toHaveBeenCalledTimes(1);
+    expect(createSignedUrls).toHaveBeenCalledWith(['user/image-id/attachment.png'], 3600);
     expect(screen.getByRole('link', { name: 'Open Reference' })).toHaveAttribute(
       'href',
       '/captures/link-id',
+    );
+    expect(select).toHaveBeenCalledWith(
+      'id, kind, title, content, source_url, created_at, attachments(storage_path)',
     );
     expect(eq).toHaveBeenCalledWith('status', 'inbox');
     expect(order).toHaveBeenCalledWith('created_at', { ascending: false });

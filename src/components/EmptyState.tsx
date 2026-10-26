@@ -5,7 +5,7 @@ type EmptyStateProps = {
   action?: ReactNode;
   children?: ReactNode;
   headingLevel?: 'h1' | 'h2';
-  icon?: LucideIcon;
+  icon?: LucideIcon | undefined;
   title: string;
 };
 

@@ -2,23 +2,20 @@ export type CaptureStatus = 'archived' | 'inbox' | 'reviewed';
 
 export const captureStatusDetails: Record<
   CaptureStatus,
-  { emptyMessage: string; eyebrow: string; label: string; path: string }
+  { emptyMessage: string; label: string; path: string }
 > = {
   inbox: {
-    emptyMessage: 'Your inbox is empty.',
-    eyebrow: 'Organize later',
+    emptyMessage: 'You’re all caught up',
     label: 'Inbox',
     path: '/inbox',
   },
   reviewed: {
-    emptyMessage: 'No reviewed captures yet.',
-    eyebrow: 'Ready for reference',
+    emptyMessage: 'Nothing reviewed yet',
     label: 'Reviewed',
     path: '/reviewed',
   },
   archived: {
-    emptyMessage: 'Your archive is empty.',
-    eyebrow: 'Out of the way',
+    emptyMessage: 'The archive is empty',
     label: 'Archived',
     path: '/archived',
   },

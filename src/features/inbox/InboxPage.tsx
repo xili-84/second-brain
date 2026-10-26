@@ -1,11 +1,21 @@
+import { Plus, RefreshCw, Search } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
-import { captureStatusDetails, type CaptureStatus } from '../capture/captureLifecycle';
+import { sections } from '../../app/navigation';
+import { EmptyState } from '../../components/EmptyState';
+import { Notice } from '../../components/Notice';
+import { PageHeader } from '../../components/PageHeader';
+import { SkeletonRows } from '../../components/Skeleton';
 import { useAuth } from '../auth/authContext';
+import { captureStatusDetails, type CaptureStatus } from '../capture/captureLifecycle';
 import { CaptureSearchResults } from '../search/CaptureSearchResults';
 import { parseSearchTerms, SEARCH_RESULT_LIMIT } from '../search/searchCaptures';
+import { SearchField } from '../search/SearchField';
 import { useCaptureSearch } from '../search/useCaptureSearch';
+import { CaptureRiver } from './CaptureRiver';
+import { useCaptureList } from './useCaptureList';
+import { useThumbnails } from './useThumbnails';
 
 export const SEARCH_DEBOUNCE_MS = 250;
 
@@ -16,34 +26,19 @@ function isTypingTarget(target: EventTarget | null) {
   );
 }
 
-type CaptureSummary = {
-  created_at: string;
-  id: string;
-  kind: string;
-  source_url: string | null;
-  title: string | null;
-};
+function plural(count: number, word: string) {
+  return `${count} ${word}${count === 1 ? '' : 's'}`;
+}
 
-export function CaptureListPage({ status }: { status: CaptureStatus }) {
-  const { client, session } = useAuth();
-  const userId = session?.user.id;
-  const [captures, setCaptures] = useState<CaptureSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const details = captureStatusDetails[status];
-
+/** Keeps the search box text and the committed ?q= query in sync, with a debounce. */
+function useSearchQuery() {
   // The committed search lives in ?q= so it survives reloads and can be shared or bookmarked.
   const [searchParams, setSearchParams] = useSearchParams();
   const urlQuery = (searchParams.get('q') ?? '').trim();
   const [draft, setDraft] = useState(urlQuery);
   const lastCommitted = useRef(urlQuery);
-  const searchInput = useRef<HTMLInputElement>(null);
-  const resultsList = useRef<HTMLOListElement>(null);
-  const { retry: retrySearch, state: search } = useCaptureSearch(client, urlQuery, Boolean(userId));
-  const isSearching = urlQuery !== '';
-  const terms = parseSearchTerms(urlQuery);
 
-  const commitSearch = useCallback(
+  const commit = useCallback(
     (value: string) => {
       const next = value.trim();
       lastCommitted.current = next;
@@ -68,9 +63,9 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
     if (draft.trim() === urlQuery) {
       return;
     }
-    const timer = window.setTimeout(() => commitSearch(draft), SEARCH_DEBOUNCE_MS);
+    const timer = window.setTimeout(() => commit(draft), SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [commitSearch, draft, urlQuery]);
+  }, [commit, draft, urlQuery]);
 
   // Follow ?q= changes that did not come from typing here, such as Back/Forward.
   useEffect(() => {
@@ -79,6 +74,28 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
       setDraft(urlQuery);
     }
   }, [urlQuery]);
+
+  const clear = useCallback(() => {
+    setDraft('');
+    commit('');
+  }, [commit]);
+
+  return { clear, commit, draft, setDraft, urlQuery };
+}
+
+export function CaptureListPage({ status }: { status: CaptureStatus }) {
+  const { client, session } = useAuth();
+  const userId = session?.user.id;
+  const details = captureStatusDetails[status];
+  const list = useCaptureList(client, status, userId);
+
+  const { clear, commit, draft, setDraft, urlQuery } = useSearchQuery();
+  const searchInput = useRef<HTMLInputElement>(null);
+  const resultsList = useRef<HTMLOListElement>(null);
+  const { retry: retrySearch, state: search } = useCaptureSearch(client, urlQuery, Boolean(userId));
+  const isSearching = urlQuery !== '';
+  const terms = parseSearchTerms(urlQuery);
+  const thumbnails = useThumbnails(client, list.captures, !isSearching);
 
   // "/" jumps to the search box from anywhere on the page.
   useEffect(() => {
@@ -102,8 +119,7 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
     if (event.key === 'Escape') {
       event.preventDefault();
       if (draft) {
-        setDraft('');
-        commitSearch('');
+        clear();
       } else {
         event.currentTarget.blur();
       }
@@ -116,127 +132,71 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
     }
   }
 
-  const loadCaptures = useCallback(async () => {
-    if (!userId) {
-      return;
-    }
+  function clearAndRefocus() {
+    clear();
+    searchInput.current?.focus();
+  }
 
-    setIsLoading(true);
-    setError(null);
-
-    const { data, error: loadError } = await client
-      .from('captures')
-      .select('id, kind, title, source_url, created_at')
-      .eq('status', status)
-      .order('created_at', { ascending: false });
-
-    if (loadError) {
-      setError(
-        `Your ${details.label.toLowerCase()} could not be loaded. Check your connection and try again.`,
-      );
-    } else {
-      setCaptures(data);
-    }
-
-    setIsLoading(false);
-  }, [client, details.label, status, userId]);
-
-  useEffect(() => {
-    void loadCaptures();
-  }, [loadCaptures]);
+  const subtitle = isSearching
+    ? search.status === 'ready'
+      ? `${search.results.length === SEARCH_RESULT_LIMIT ? 'First ' : ''}${plural(search.results.length, 'result')} across all captures`
+      : search.status === 'error'
+        ? 'Search failed'
+        : 'Searching…'
+    : list.isLoading
+      ? 'Loading…'
+      : plural(list.captures.length, 'item');
 
   return (
-    <section className="workspace-panel" aria-labelledby="capture-list-heading">
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">{details.eyebrow}</p>
-          <h1 id="capture-list-heading">{details.label}</h1>
-        </div>
-      </div>
-
-      <nav className="status-tabs" aria-label="Capture status">
-        {(Object.keys(captureStatusDetails) as CaptureStatus[]).map((tabStatus) => {
-          const tab = captureStatusDetails[tabStatus];
-          return (
-            <Link
-              aria-current={tabStatus === status ? 'page' : undefined}
-              className={tabStatus === status ? 'status-tab status-tab--active' : 'status-tab'}
-              key={tabStatus}
-              to={tab.path}
+    <section aria-labelledby="capture-list-heading" className="page">
+      <PageHeader
+        actions={
+          isSearching ? (
+            <button className="btn btn--ghost" onClick={clearAndRefocus} type="button">
+              Clear search
+            </button>
+          ) : (
+            <button
+              className="icon-btn"
+              disabled={list.isLoading}
+              onClick={() => void list.reload()}
+              title="Refresh"
+              type="button"
             >
-              {tab.label}
-            </Link>
-          );
-        })}
-      </nav>
+              <RefreshCw aria-hidden="true" className="icon" />
+              <span className="visually-hidden">Refresh</span>
+            </button>
+          )
+        }
+        id="capture-list-heading"
+        subtitle={subtitle}
+        title={details.label}
+      />
 
-      <form
-        className="capture-search"
-        onSubmit={(event) => {
-          event.preventDefault();
-          commitSearch(draft);
-        }}
-        role="search"
-      >
-        <label className="visually-hidden" htmlFor="capture-search-input">
-          Search all captures
-        </label>
-        <input
-          aria-describedby="capture-search-help"
-          aria-keyshortcuts="/"
-          autoComplete="off"
-          enterKeyHint="search"
-          id="capture-search-input"
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={handleSearchKeyDown}
-          placeholder="Search Inbox, Reviewed and Archived"
-          ref={searchInput}
-          type="search"
-          value={draft}
-        />
-        <span className="visually-hidden" id="capture-search-help">
-          Searches titles, notes and links in every status. Press slash to focus, Escape to clear,
-          and the down arrow to move into the results.
-        </span>
-      </form>
+      <SearchField
+        inputRef={searchInput}
+        onChange={setDraft}
+        onClear={clearAndRefocus}
+        onKeyDown={handleSearchKeyDown}
+        onSubmit={() => commit(draft)}
+        value={draft}
+      />
 
       {isSearching ? (
         <>
           {search.status === 'error' && (
-            <div className="form-message form-message--error" role="alert">
-              <span>Search failed. Check your connection and try again.</span>{' '}
-              <button className="text-button" onClick={() => void retrySearch()} type="button">
+            <Notice tone="error">
+              <span>Search failed. Check your connection and try again.</span>
+              <button className="btn btn--ghost" onClick={() => void retrySearch()} type="button">
                 Try again
               </button>
-            </div>
+            </Notice>
           )}
 
-          <div className="inbox-toolbar">
-            <span aria-live="polite">
-              {search.status === 'ready'
-                ? `${search.results.length === SEARCH_RESULT_LIMIT ? 'First ' : ''}${search.results.length} result${search.results.length === 1 ? '' : 's'} across all captures`
-                : search.status === 'error'
-                  ? 'Search failed'
-                  : 'Searching…'}
-            </span>
-            <button
-              className="text-button"
-              onClick={() => {
-                setDraft('');
-                commitSearch('');
-                searchInput.current?.focus();
-              }}
-              type="button"
-            >
-              Clear search
-            </button>
-          </div>
-
           {search.status === 'ready' && search.results.length === 0 && (
-            <div className="empty-state">
-              <h2>No captures match “{urlQuery}”.</h2>
-              <p>Search looks at titles, notes and links in Inbox, Reviewed and Archived.</p>
-            </div>
+            <EmptyState icon={Search} title={`No captures match “${urlQuery}”.`}>
+              Search looks at titles, notes and links in Inbox, Reviewed and Archived.
+            </EmptyState>
           )}
 
           <CaptureSearchResults
@@ -246,76 +206,49 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
             results={search.status === 'ready' ? search.results : []}
             terms={terms}
           />
+          {search.status === 'loading' && <SkeletonRows count={3} />}
         </>
       ) : (
         <>
-          {error && (
-            <div className="form-message form-message--error" role="alert">
-              <span>{error}</span>{' '}
-              <button className="text-button" onClick={() => void loadCaptures()} type="button">
+          {list.error && (
+            <Notice tone="error">
+              <span>
+                Your {details.label.toLowerCase()} could not be loaded. Check your connection and
+                try again.
+              </span>
+              <button className="btn btn--ghost" onClick={() => void list.reload()} type="button">
                 Try again
               </button>
-            </div>
+            </Notice>
           )}
 
-          <div className="inbox-toolbar">
-            <span aria-live="polite">
-              {isLoading
-                ? 'Loading…'
-                : `${captures.length} capture${captures.length === 1 ? '' : 's'}`}
-            </span>
-            <button
-              className="text-button"
-              disabled={isLoading}
-              onClick={() => void loadCaptures()}
-              type="button"
-            >
-              Refresh
-            </button>
-          </div>
+          {list.isLoading && list.captures.length === 0 && <SkeletonRows />}
 
-          {!isLoading && captures.length === 0 && !error && (
-            <div className="empty-state">
-              <h2>{details.emptyMessage}</h2>
-              <p>
-                {status === 'inbox'
-                  ? 'Save a note or link and it will appear here.'
-                  : 'Captures moved to this stage will appear here.'}
-              </p>
-            </div>
-          )}
-
-          <ol aria-busy={isLoading} aria-label={details.label} className="capture-list">
-            {captures.map((capture) => {
-              const cardTitle =
-                capture.title?.trim() ||
-                (capture.kind === 'link' && capture.source_url
-                  ? capture.source_url
-                  : `Untitled ${capture.kind}`);
-
-              return (
-                <li className="capture-card" key={capture.id}>
-                  <Link
-                    aria-label={`Open ${cardTitle}`}
-                    className="capture-card-link"
-                    to={`/captures/${capture.id}`}
-                  >
-                    <div className="capture-meta">
-                      <span>{capture.kind}</span>
-                      <time dateTime={capture.created_at}>
-                        {new Intl.DateTimeFormat(undefined, {
-                          dateStyle: 'medium',
-                          timeStyle: 'short',
-                        }).format(new Date(capture.created_at))}
-                      </time>
-                    </div>
-                    <h2>{cardTitle}</h2>
-                    {capture.kind === 'link' && <p>{capture.source_url}</p>}
+          {!list.isLoading && list.captures.length === 0 && !list.error && (
+            <EmptyState
+              action={
+                status === 'inbox' ? (
+                  <Link className="btn btn--primary" to="/capture">
+                    <Plus aria-hidden="true" className="icon" />
+                    New capture
                   </Link>
-                </li>
-              );
-            })}
-          </ol>
+                ) : undefined
+              }
+              icon={sections.find((section) => section.status === status)?.icon}
+              title={details.emptyMessage}
+            >
+              {status === 'inbox'
+                ? 'Share a link or photo to Second Brain, or capture a thought now.'
+                : 'Captures you move here will show up in this list.'}
+            </EmptyState>
+          )}
+
+          <CaptureRiver
+            captures={list.captures}
+            isBusy={list.isLoading}
+            status={status}
+            thumbnails={thumbnails}
+          />
         </>
       )}
     </section>

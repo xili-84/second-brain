@@ -1,7 +1,8 @@
 import type { KeyboardEvent, Ref } from 'react';
-import { Link } from 'react-router-dom';
 
 import { captureStatusDetails } from '../capture/captureLifecycle';
+import { CaptureRow } from '../inbox/CaptureRow';
+import { captureTitle, displayUrl, domainOf, isUntitledLink } from '../inbox/listFormat';
 import { HighlightedText } from './HighlightedText';
 import { makeSnippet, splitHighlights } from './highlight';
 import type { CaptureSearchResult } from './searchCaptures';
@@ -10,51 +11,42 @@ function hasMatch(text: string | null, terms: string[]) {
   return Boolean(text && splitHighlights(text, terms).some((part) => part.match));
 }
 
-function SearchResultCard({ result, terms }: { result: CaptureSearchResult; terms: string[] }) {
-  const cardTitle =
-    result.title?.trim() ||
-    (result.kind === 'link' && result.source_url ? result.source_url : `Untitled ${result.kind}`);
-  const showUrl = result.kind === 'link' && result.source_url && cardTitle !== result.source_url;
+function SearchResultRow({ result, terms }: { result: CaptureSearchResult; terms: string[] }) {
+  const title = captureTitle(result);
+  const untitledLink = isUntitledLink(result);
+  const details = captureStatusDetails[result.status];
+  const statusLabel = details?.label ?? result.status;
   // Image notes stay private in lists, so only say that the match is there.
   const snippet = result.kind === 'image' ? '' : makeSnippet(result.content, terms);
   const imageNoteMatch =
     result.kind === 'image' && !hasMatch(result.title, terms) && hasMatch(result.content, terms);
-  const statusLabel = captureStatusDetails[result.status]?.label ?? result.status;
+  // A titled link shows its URL under the title when the URL is what matched.
+  const urlMatch =
+    result.kind === 'link' && !untitledLink && result.source_url
+      ? hasMatch(result.source_url, terms)
+      : false;
+
+  const excerpt = snippet ? (
+    <HighlightedText terms={terms} text={snippet} />
+  ) : imageNoteMatch ? (
+    'Matches the image note.'
+  ) : urlMatch && result.source_url ? (
+    <HighlightedText terms={terms} text={displayUrl(result.source_url)} />
+  ) : null;
 
   return (
-    <li className="capture-card">
-      <Link
-        aria-label={`Open ${cardTitle} (${statusLabel})`}
-        className="capture-card-link"
-        to={`/captures/${result.id}`}
-      >
-        <div className="capture-meta">
-          <span>
-            {result.kind} · <span className="status-pill">{statusLabel}</span>
-          </span>
-          <time dateTime={result.created_at}>
-            {new Intl.DateTimeFormat(undefined, {
-              dateStyle: 'medium',
-              timeStyle: 'short',
-            }).format(new Date(result.created_at))}
-          </time>
-        </div>
-        <h2>
-          <HighlightedText terms={terms} text={cardTitle} />
-        </h2>
-        {showUrl && (
-          <p>
-            <HighlightedText terms={terms} text={result.source_url ?? ''} />
-          </p>
-        )}
-        {snippet && (
-          <p className="search-snippet">
-            <HighlightedText terms={terms} text={snippet} />
-          </p>
-        )}
-        {imageNoteMatch && <p className="search-snippet">Matches the image note.</p>}
-      </Link>
-    </li>
+    <CaptureRow
+      accessibleName={`Open ${title} (${statusLabel})`}
+      createdAt={result.created_at}
+      domain={result.kind === 'link' ? domainOf(result.source_url) : null}
+      excerpt={excerpt}
+      href={`/captures/${result.id}`}
+      kind={result.kind}
+      section={details?.path ?? '/inbox'}
+      status={statusLabel}
+      title={<HighlightedText terms={terms} text={untitledLink ? displayUrl(title) : title} />}
+      titleIsUrl={untitledLink}
+    />
   );
 }
 
@@ -79,7 +71,7 @@ export function CaptureSearchResults({
       return;
     }
     const links = Array.from(
-      event.currentTarget.querySelectorAll<HTMLAnchorElement>('a.capture-card-link'),
+      event.currentTarget.querySelectorAll<HTMLAnchorElement>('a.row__link'),
     );
     const index = links.indexOf(document.activeElement as HTMLAnchorElement);
     if (index === -1) {
@@ -100,12 +92,12 @@ export function CaptureSearchResults({
     <ol
       aria-busy={isBusy}
       aria-label="Search results"
-      className="capture-list"
+      className="river river--results"
       onKeyDown={handleKeyDown}
       ref={ref}
     >
       {results.map((result) => (
-        <SearchResultCard key={result.id} result={result} terms={terms} />
+        <SearchResultRow key={result.id} result={result} terms={terms} />
       ))}
     </ol>
   );
