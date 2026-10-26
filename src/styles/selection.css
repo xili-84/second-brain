@@ -82,7 +82,7 @@
   padding-left: var(--space-3);
 }
 
-.row--selectable .row__title {
+.row--selectable .row__link:hover .row__title {
   text-decoration: none;
 }
 
