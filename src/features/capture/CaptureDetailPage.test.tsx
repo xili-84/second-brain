@@ -80,12 +80,14 @@ function renderDetail(client: SecondBrainClient) {
 
 function createDetailClient({
   deleteResult = { data: { id: capture.id }, error: null },
+  folderObjectNames = [],
   loadedCapture = capture,
   removeResult = { data: [], error: null },
   rpcResult = { data: true, error: null },
   updateResult = { data: capture, error: null },
 }: {
   deleteResult?: { data: { id: string } | null; error: { message: string } | null };
+  folderObjectNames?: string[];
   loadedCapture?: TestCapture;
   removeResult?: { data: unknown[]; error: { message: string } | null };
   rpcResult?: { data: boolean | null; error: { message: string } | null };
@@ -120,6 +122,17 @@ function createDetailClient({
     return builder;
   });
   const remove = vi.fn().mockResolvedValue(removeResult);
+  const list = vi
+    .fn()
+    .mockResolvedValueOnce({
+      data: folderObjectNames.map((name) => ({ id: `id-${name}`, name })),
+      error: null,
+    })
+    .mockResolvedValue({ data: [], error: null });
+  const createSignedUrl = vi.fn().mockResolvedValue({
+    data: { signedUrl: 'https://storage.example/private-image' },
+    error: null,
+  });
   const rpc = vi.fn().mockResolvedValue(rpcResult);
   const updateCall = vi.fn();
 
@@ -128,16 +141,14 @@ function createDetailClient({
     rpc,
     storage: {
       from: vi.fn().mockReturnValue({
-        createSignedUrl: vi.fn().mockResolvedValue({
-          data: { signedUrl: 'https://storage.example/private-image' },
-          error: null,
-        }),
+        createSignedUrl,
+        list,
         remove,
       }),
     },
   } as unknown as SecondBrainClient;
 
-  return { client, deleteCall, from, remove, rpc, updateCall };
+  return { client, createSignedUrl, deleteCall, from, list, remove, rpc, updateCall };
 }
 
 describe('capture detail', () => {
@@ -575,5 +586,64 @@ describe('capture detail', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Nothing else was deleted');
     expect(rpc).not.toHaveBeenCalled();
     expect(screen.getByRole('heading', { name: 'A useful thought' })).toBeVisible();
+  });
+  it('also removes stray objects in the capture folder before deleting records', async () => {
+    const imageCapture: TestCapture = {
+      ...capture,
+      attachments: [
+        {
+          id: 'attachment-id',
+          mime_type: 'image/png',
+          original_name: 'receipt.png',
+          size_bytes: 2048,
+          storage_path: '8cfd9d8f-dde8-4ec3-b7d8-2fcb4241240d/capture-id/attachment-id.png',
+        },
+      ],
+      kind: 'image',
+      title: 'Private receipt',
+    };
+    const { client, remove, rpc } = createDetailClient({
+      folderObjectNames: ['attachment-id.png', 'old-replaced.png'],
+      loadedCapture: imageCapture,
+    });
+    renderDetail(client);
+
+    await screen.findByRole('img', { name: 'Private receipt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
+
+    await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+    expect(remove).toHaveBeenCalledWith([
+      '8cfd9d8f-dde8-4ec3-b7d8-2fcb4241240d/capture-id/attachment-id.png',
+      '8cfd9d8f-dde8-4ec3-b7d8-2fcb4241240d/capture-id/old-replaced.png',
+    ]);
+  });
+
+  it('re-signs an expired image link once when the image fails to load', async () => {
+    const imageCapture: TestCapture = {
+      ...capture,
+      attachments: [
+        {
+          id: 'attachment-id',
+          mime_type: 'image/png',
+          original_name: 'receipt.png',
+          size_bytes: 2048,
+          storage_path: 'user/capture-id/attachment-id.png',
+        },
+      ],
+      kind: 'image',
+      title: 'Private receipt',
+    };
+    const { client, createSignedUrl } = createDetailClient({ loadedCapture: imageCapture });
+    renderDetail(client);
+
+    const image = await screen.findByRole('img', { name: 'Private receipt' });
+    fireEvent.error(image);
+    await waitFor(() => expect(createSignedUrl).toHaveBeenCalledTimes(2));
+
+    fireEvent.error(screen.getByRole('img', { name: 'Private receipt' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('could not be loaded');
+    expect(createSignedUrl).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeVisible();
   });
 });

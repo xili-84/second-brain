@@ -10,6 +10,11 @@ import {
 import { validateCaptureDraft, type CaptureDraft, type CaptureKind } from './captureDraft';
 import { validateImageFile } from './imageCapture';
 import { replaceImageAttachment, type StoredImageAttachment } from './imageReplacement';
+import {
+  createImageSignedUrl,
+  DOWNLOAD_URL_TTL_SECONDS,
+  removeCaptureImageObjects,
+} from './imageStorage';
 import { isNativeImageSaveAvailable, saveImageToPhone } from './nativeImageSaver';
 
 type CaptureRecord = {
@@ -93,6 +98,7 @@ export function CaptureDetailPage() {
   const [isSavingToPhone, setIsSavingToPhone] = useState(false);
   const [hasSavedToPhone, setHasSavedToPhone] = useState(false);
   const isSavingToPhoneRef = useRef(false);
+  const imageRefreshAttempted = useRef(false);
 
   const loadCapture = useCallback(async () => {
     if (!captureId || !userId) {
@@ -106,6 +112,7 @@ export function CaptureDetailPage() {
     setReplacementImage(null);
     setIsValidatingReplacement(false);
     isSavingToPhoneRef.current = false;
+    imageRefreshAttempted.current = false;
     setError(null);
 
     const { data, error: loadError } = await client
@@ -137,16 +144,14 @@ export function CaptureDetailPage() {
         if (!imagePath) {
           setImageError('This image capture is incomplete. You can delete it and try again.');
         } else {
-          const { data: signedImage, error: signedImageError } = await client.storage
-            .from('capture-images')
-            .createSignedUrl(imagePath, 3600);
+          const signedUrl = await createImageSignedUrl(client, imagePath);
 
-          if (signedImageError) {
+          if (!signedUrl) {
             setImageError(
               'The private image could not be loaded. Check your connection and retry.',
             );
           } else {
-            setImageUrl(signedImage.signedUrl);
+            setImageUrl(signedUrl);
           }
         }
       }
@@ -158,6 +163,34 @@ export function CaptureDetailPage() {
   useEffect(() => {
     void loadCapture();
   }, [loadCapture]);
+
+  /** Signed links expire; re-sign once when the browser reports the image failed to load. */
+  const refreshImageUrl = useCallback(
+    async (isManualRetry = false) => {
+      const imagePath = capture?.kind === 'image' ? capture.attachments[0]?.storage_path : null;
+
+      if (!imagePath || (!isManualRetry && imageRefreshAttempted.current)) {
+        if (!isManualRetry) {
+          setImageUrl(null);
+          setImageError('The private image could not be loaded. Check your connection and retry.');
+        }
+
+        return;
+      }
+
+      imageRefreshAttempted.current = true;
+      setImageError(null);
+      const signedUrl = await createImageSignedUrl(client, imagePath);
+
+      if (signedUrl) {
+        setImageUrl(signedUrl);
+      } else {
+        setImageUrl(null);
+        setImageError('The private image could not be loaded. Check your connection and retry.');
+      }
+    },
+    [capture, client],
+  );
 
   function updateDraft(update: Partial<CaptureDraft>) {
     setDraft((current) => (current ? { ...current, ...update } : current));
@@ -299,17 +332,19 @@ export function CaptureDetailPage() {
         );
       } else {
         const savedCapture = { ...data, attachments: [replacementResult.attachment] };
-        const { data: signedImage, error: signedImageError } = await client.storage
-          .from('capture-images')
-          .createSignedUrl(replacementResult.attachment.storage_path, 3600);
+        const signedUrl = await createImageSignedUrl(
+          client,
+          replacementResult.attachment.storage_path,
+        );
 
+        imageRefreshAttempted.current = false;
         setCapture(savedCapture);
         setDraft(toDraft(savedCapture));
-        setImageUrl(signedImageError ? null : signedImage.signedUrl);
+        setImageUrl(signedUrl);
         setImageError(
-          signedImageError
-            ? 'The replacement was saved, but its private preview could not be loaded. Retry later.'
-            : null,
+          signedUrl
+            ? null
+            : 'The replacement was saved, but its private preview could not be loaded. Retry later.',
         );
         setMessage(replacementResult.warning ?? 'Changes saved. Image replaced.');
         setIsReplacingImage(false);
@@ -386,15 +421,17 @@ export function CaptureDetailPage() {
 
     if (capture.kind === 'image') {
       const paths = capture.attachments.map((attachment) => attachment.storage_path);
+      const storageError = await removeCaptureImageObjects(
+        client,
+        session.user.id,
+        capture.id,
+        paths,
+      );
 
-      if (paths.length > 0) {
-        const { error: storageError } = await client.storage.from('capture-images').remove(paths);
-
-        if (storageError) {
-          setError('The private image was not removed. Nothing else was deleted; please retry.');
-          setPendingAction(null);
-          return;
-        }
+      if (storageError) {
+        setError('The private image was not removed. Nothing else was deleted; please retry.');
+        setPendingAction(null);
+        return;
       }
 
       const { data, error: deleteError } = await client.rpc('delete_image_capture_after_storage', {
@@ -447,11 +484,22 @@ export function CaptureDetailPage() {
     setIsSavingToPhone(true);
 
     try {
+      // The displayed link may be close to expiry; sign a short-lived one just for this download.
+      const downloadUrl = await createImageSignedUrl(
+        client,
+        attachment.storage_path,
+        DOWNLOAD_URL_TTL_SECONDS,
+      );
+
+      if (!downloadUrl) {
+        throw new Error('A download link could not be created.');
+      }
+
       const result = await saveImageToPhone({
         expectedSize: attachment.size_bytes,
         fileName: attachment.original_name,
         mimeType: attachment.mime_type,
-        url: imageUrl,
+        url: downloadUrl,
       });
       setHasSavedToPhone(true);
       setMessage(`Image saved to ${result.location}.`);
@@ -581,7 +629,11 @@ export function CaptureDetailPage() {
             (imageUrl ? (
               <>
                 <figure className="capture-image">
-                  <img alt={capture.title || 'Saved image'} src={imageUrl} />
+                  <img
+                    alt={capture.title || 'Saved image'}
+                    onError={() => void refreshImageUrl()}
+                    src={imageUrl}
+                  />
                   {capture.attachments[0] && (
                     <figcaption>
                       {capture.attachments[0].original_name} ·{' '}
@@ -607,8 +659,17 @@ export function CaptureDetailPage() {
                 )}
               </>
             ) : (
-              <div className="image-placeholder" role={imageError ? 'alert' : undefined}>
-                {imageError ?? 'Loading private image…'}
+              <div className="image-placeholder" role={imageError ? 'alert' : 'status'}>
+                <span>{imageError ?? 'Loading private image…'}</span>
+                {imageError && capture.attachments[0] && (
+                  <button
+                    className="text-button"
+                    onClick={() => void refreshImageUrl(true)}
+                    type="button"
+                  >
+                    Retry
+                  </button>
+                )}
               </div>
             ))}
 
