@@ -36,3 +36,6 @@ supabase/.temp/
 android/app/src/main/assets/public/
 android/capacitor-cordova-android-plugins/build/
 android/build/
+
+# Local copies of the live site made by scripts/deploy.sh
+deploy-backups/

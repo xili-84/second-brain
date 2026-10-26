@@ -5,3 +5,4 @@ coverage/
 dist/
 node_modules/
 android/capacitor-cordova-android-plugins/
+deploy-backups/

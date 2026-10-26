@@ -56,8 +56,9 @@ npm run check        # prettier, eslint, tsc, vitest, production build into dist
 
 ## Deploy the web app
 
-The production build is the contents of `dist/` (including the hidden `.htaccess`). It is static,
-so it runs unchanged on Namecheap and on ALL-INKL.
+The production build is the contents of `dist/` (including the hidden `.htaccess`). The files go
+**directly into the subdomain's document root**, `brain.okdaily.net`. It is static, so it runs
+unchanged on Namecheap and on ALL-INKL. Full steps: [`docs/deployment.md`](docs/deployment.md).
 
 ### Option A: script (SFTP or FTPS via lftp)
 
@@ -67,17 +68,19 @@ export DEPLOY_PASSWORD='...'          # or use an SSH key with sftp
 # export DEPLOY_PROTOCOL=ftps         # default: sftp
 
 scripts/deploy.sh --dry-run           # show what would change
-scripts/deploy.sh                     # upload into $DEPLOY_ROOT/next
-scripts/deploy.sh --activate          # upload, then current -> previous-<ts>, next -> current
+scripts/deploy.sh                     # back up live files, upload new/changed files
+scripts/deploy.sh --delete            # ...and remove stale files from older builds
+scripts/deploy.sh --rollback deploy-backups/<timestamp>   # restore a backup exactly
 ```
 
-Roll back by renaming `previous-<ts>` back to `current`.
+Each run backs up the live site to `deploy-backups/<timestamp>/` locally and to
+`~/brain-backups/<timestamp>/` on the server (outside the document root).
 
 ### Option B: cPanel File Manager
 
-Zip the **contents** of `dist/`, upload into `brain.okdaily.net/next`, extract, check that
-`.htaccess` and `index.html` sit directly in `next`, then swap folders as described in
-[`docs/deployment.md`](docs/deployment.md).
+Show hidden files, compress the current site into a backup zip outside `brain.okdaily.net`, delete
+the old site files (keep `.well-known` and `cgi-bin`), upload and extract the new zip directly in
+`brain.okdaily.net`, then confirm `.htaccess` is there with the CSP line.
 
 After a deploy, check `https://brain.okdaily.net`, `/manifest.webmanifest`
 (`application/manifest+json`), `/sw.js` (`Cache-Control: no-cache`) and that `/assets/` returns 403.
