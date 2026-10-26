@@ -6,13 +6,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: [
-      'android/**/build',
-      'android/app/src/main/assets',
-      'android-diagnostic/**/build',
-      'coverage',
-      'dist',
-    ],
+    ignores: ['android/**/build', 'android/app/src/main/assets', 'coverage', 'dist'],
   },
   {
     files: ['src/**/*.{ts,tsx}'],

@@ -19,11 +19,15 @@ android/.gradle/
 android/**/build/
 android/local.properties
 android/.idea/
-android-diagnostic/.gradle/
-android-diagnostic/**/build/
-android-diagnostic/local.properties
-android-diagnostic/.idea/
+
+# Release artefacts and old build archives belong outside the source tree
+# (see /workspace/brain-archive and /workspace/brain-release).
 *.apk
+*.aab
+*.zip
+android/keystore.properties
+*.jks
+*.keystore
 
 supabase/.branches/
 supabase/.temp/
