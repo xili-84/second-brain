@@ -45,4 +45,15 @@ describe('application shell', () => {
     );
     expect(document.title).toBe('Sign in · Second Brain');
   });
+
+  it('sends the retired /share URL home without keeping shared values in the address bar', async () => {
+    window.history.pushState({}, '', '/share?title=Old&text=Shared+text');
+
+    render(<App client={createFakeSupabaseClient()} />);
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeVisible();
+    expect(window.location.pathname).toBe('/login');
+    expect(window.location.search).toBe('');
+    expect(screen.queryByText('Shared text')).not.toBeInTheDocument();
+  });
 });

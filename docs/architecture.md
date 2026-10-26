@@ -129,18 +129,13 @@ This Storage-first order guarantees that deleting only database metadata cannot 
 billed object behind. The application must not reset a failed creation form while its local draft
 can still be retried.
 
-## Android Share Target gate
+## Android sharing
 
-The Android compatibility gate is complete. A physical Huawei P40 Pro test established that the
-diagnostic APK installs, appears as **Second Brain** in Android's system Share menu, receives shared
-plain text correctly, and displays **Share received** without claiming that the value was saved.
-The proof therefore validates a native `ACTION_SEND` receiver independently of browser PWA Share
-Target limitations.
-
-The production Android package will be a Capacitor application using package ID
-`net.okdaily.brain`. Until the real capture path passes its physical acceptance test, the working
-dependency-free diagnostic package `net.okdaily.brain.bridge`, its source, and its APK remain
-available side by side.
+Huawei EMUI browsers do not register installed PWAs in the system Share menu, so Android sharing is
+provided by the Capacitor app's native `ACTION_SEND` receiver (package `net.okdaily.brain`). The
+earlier browser Share Target route and the separate diagnostic APK were retired on 2026-10-26 after
+release 1.1.1 passed physical tests for text, Gallery and Files image sharing, and Save to phone.
+`/share` now redirects to the home page.
 
 For production text sharing:
 
@@ -161,13 +156,11 @@ pending value is a local handoff buffer, not an offline synchronization outbox.
 The production Capacitor path passed physical acceptance on the Huawei P40 Pro on 2026-07-24.
 Shared plain text opened the authenticated React capture form, remained unsaved until explicit
 confirmation, persisted successfully to Supabase, and appeared in the Windows inbox. This confirms
-that Android and Windows use the same account-owned dataset. The diagnostic source remains
-preserved as a fallback but may now be retired separately when approved.
+that Android and Windows use the same account-owned dataset.
 
 The corresponding Namecheap web build passed production acceptance at
 `https://brain.okdaily.net` on the same date, including HTTPS, authentication, note/link capture,
-inbox retrieval, session restoration, cross-device visibility, and the non-saving `/share`
-diagnostic.
+inbox retrieval, session restoration, and cross-device visibility.
 
 ## Post-Version-1 Android image extensions
 
@@ -216,4 +209,4 @@ migration. Initial deployment is manual. GitHub Actions, remote repository confi
 Docker-based local Supabase, Playwright, advanced monitoring, and automated deployment are
 intentionally deferred.
 
-The diagnostic deployment procedure is recorded in [deployment.md](deployment.md).
+The deployment procedure is recorded in [deployment.md](deployment.md).

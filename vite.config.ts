@@ -69,15 +69,6 @@ export default defineConfig(({ mode }) => ({
             purpose: 'any maskable',
           },
         ],
-        share_target: {
-          action: '/share',
-          method: 'GET',
-          params: {
-            title: 'title',
-            text: 'text',
-            url: 'url',
-          },
-        },
       },
       workbox: {
         cleanupOutdatedCaches: true,

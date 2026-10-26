@@ -108,6 +108,6 @@ over the previous one.
 Debug APKs (`npm run android:check`) are still signed with the local debug key and cannot update a
 release install.
 
-Text sharing and private image capture have passed physical Huawei acceptance. Physical acceptance
-for image sharing and **Save to phone** is still pending. The retired `android-diagnostic` app is
-archived outside the repository.
+Text sharing, image sharing from Gallery and Files, private image capture and **Save to phone**
+have passed physical tests (release 1.1.1). The earlier diagnostic app and the browser `/share`
+route are retired.

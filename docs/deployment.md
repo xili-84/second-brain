@@ -11,7 +11,7 @@ certificate.
 ## Production origin
 
 The PWA is hosted at the root of `https://brain.okdaily.net`, so its manifest uses `id: /`,
-`start_url: /`, `scope: /` and the Share Target action `/share`. The service worker is served as
+`start_url: /` and `scope: /`. The service worker is served as
 `/sw.js` with root scope.
 
 ## Build

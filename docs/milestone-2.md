@@ -1,5 +1,9 @@
 # Milestone 2: authenticated end-to-end capture
 
+> **Retired 2026-10-26:** the diagnostic bridge APK and the PWA `/share` diagnostic route
+> described below were removed after release 1.1.1 passed physical sharing tests. This file is
+> kept as a historical record.
+
 Status: complete and production-accepted on 2026-07-24. Automated web and Android checks pass.
 Physical testing on the Huawei P40 Pro confirmed native plain-text sharing, editable review before
 saving, authenticated Supabase persistence, and visibility of the saved capture in the Windows

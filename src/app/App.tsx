@@ -18,7 +18,6 @@ import { reconcileImageStorage } from '../features/capture/imageReconciliation';
 import { QuickCapturePage } from '../features/capture/QuickCapturePage';
 import { CaptureListPage, InboxPage } from '../features/inbox/InboxPage';
 import { PendingShareProvider } from '../features/share-target/PendingShareProvider';
-import { ShareDiagnostic } from '../features/share-target/ShareDiagnostic';
 import type { SecondBrainClient } from '../lib/supabase/client';
 import { applyPwaUpdate, subscribeToPwaUpdates } from './pwaUpdate';
 
@@ -47,7 +46,6 @@ const routeTitles: Record<string, string> = {
   '/inbox': 'Inbox',
   '/login': 'Sign in',
   '/reviewed': 'Reviewed',
-  '/share': 'Share',
 };
 
 function useDocumentTitle() {
@@ -188,7 +186,9 @@ function Shell() {
               </ProtectedRoute>
             }
           />
-          <Route path="/share" element={<ShareDiagnostic />} />
+          {/* Retired PWA share-target URL: older installs may still open it, so send them home
+              and drop any shared values from the address bar. */}
+          <Route path="/share" element={<Navigate replace to="/" />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
