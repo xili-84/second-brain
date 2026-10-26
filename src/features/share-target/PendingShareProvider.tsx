@@ -37,9 +37,20 @@ export function PendingShareProvider({ children }: { children: ReactNode }) {
         setError(null);
         navigate('/capture');
       }
-    }).then((handle) => {
-      removeListener = handle ? () => handle.remove() : undefined;
-    });
+    })
+      .then((handle) => {
+        if (!handle) {
+          return;
+        }
+
+        if (isActive) {
+          removeListener = () => handle.remove();
+        } else {
+          // The provider unmounted before registration finished; do not leak the listener.
+          void handle.remove();
+        }
+      })
+      .catch(() => undefined);
 
     return () => {
       isActive = false;
