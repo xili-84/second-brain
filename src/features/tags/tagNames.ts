@@ -10,7 +10,13 @@ export type Tag = { id: string; name: string };
  * length at 50 (the database limit). Returns null when nothing is left.
  */
 export function normalizeTagName(raw: string): string | null {
-  const name = raw.replace(/^#+/u, '').replace(/\s+/gu, ' ').trim().slice(0, MAX_TAG_LENGTH).trim();
+  const name = raw
+    .trim()
+    .replace(/^#+/u, '')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .slice(0, MAX_TAG_LENGTH)
+    .trim();
   return name || null;
 }
 
@@ -45,7 +51,7 @@ export function suggestTags(
   limit = 6,
 ) {
   const appliedKeys = new Set(applied.map((tag) => tagKey(tag.name)));
-  const query = tagKey(typed.replace(/^#+/u, ''));
+  const query = tagKey(typed.trim().replace(/^#+/u, ''));
   const available = library.filter((tag) => !appliedKeys.has(tagKey(tag.name)));
   if (!query) {
     return sortTags(available).slice(0, limit);

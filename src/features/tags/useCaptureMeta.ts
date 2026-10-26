@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import type { SecondBrainClient } from '../../lib/supabase/client';
 import { attachTag, detachTag, ensureTag, setFavorite } from './tagsApi';
@@ -24,29 +24,22 @@ export function useCaptureMeta(
   capture: CaptureWithMeta | null,
 ) {
   const library = useTagLibrary(client, Boolean(userId));
-  const [isFavorite, setIsFavorite] = useState(false);
-  const [tags, setTags] = useState<Tag[]>([]);
+  const [isFavorite, setIsFavorite] = useState(Boolean(capture?.is_favorite));
+  const [tags, setTags] = useState<Tag[]>(() => tagsFromEmbed(capture?.capture_tags));
   const [error, setError] = useState<string | null>(null);
-  const tagsRef = useRef<Tag[]>([]);
 
-  // Start from the record when a capture opens. Later saves of the text return the capture
-  // without its tags, so they must not reset what is shown here.
-  const latest = useRef(capture);
-  latest.current = capture;
-  const captureId = capture?.id;
-  useEffect(() => {
-    const record = latest.current;
-    const next = tagsFromEmbed(record?.capture_tags);
-    tagsRef.current = next;
-    setTags(next);
-    setIsFavorite(Boolean(record?.is_favorite));
+  // Start from the record whenever another capture opens (adjusting state during render, so the
+  // first paint is already right). Later saves of the text return the capture without its tags,
+  // so they must not reset what is shown here; that is why this keys on the id only.
+  const [shownId, setShownId] = useState(capture?.id);
+  if (capture?.id !== shownId) {
+    setShownId(capture?.id);
+    setIsFavorite(Boolean(capture?.is_favorite));
+    setTags(tagsFromEmbed(capture?.capture_tags));
     setError(null);
-  }, [captureId]);
+  }
 
-  const update = useCallback((change: (current: Tag[]) => Tag[]) => {
-    tagsRef.current = change(tagsRef.current);
-    setTags(tagsRef.current);
-  }, []);
+  const update = setTags;
 
   const toggleFavorite = useCallback(async () => {
     if (!capture) {
@@ -65,7 +58,7 @@ export function useCaptureMeta(
 
   const addTag = useCallback(
     async (name: string) => {
-      if (!capture || !userId || tagsRef.current.some((tag) => tagKey(tag.name) === tagKey(name))) {
+      if (!capture || !userId || tags.some((tag) => tagKey(tag.name) === tagKey(name))) {
         return;
       }
       setError(null);
@@ -81,12 +74,12 @@ export function useCaptureMeta(
         setError(`The tag “${name}” could not be added. Check your connection and try again.`);
       }
     },
-    [capture, client, library, update, userId],
+    [capture, client, library, tags, update, userId],
   );
 
   const removeTag = useCallback(
     async (name: string) => {
-      const tag = tagsRef.current.find((item) => tagKey(item.name) === tagKey(name));
+      const tag = tags.find((item) => tagKey(item.name) === tagKey(name));
       // A tag that is still being added has no stored link to remove yet.
       if (!capture || !tag || tag.id.startsWith(PENDING)) {
         return;
@@ -102,7 +95,7 @@ export function useCaptureMeta(
         );
       }
     },
-    [capture, client, update],
+    [capture, client, tags, update],
   );
 
   return { addTag, error, isFavorite, library: library.tags, removeTag, tags, toggleFavorite };
