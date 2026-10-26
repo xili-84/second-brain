@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Second Brain</string>
+    <string name="android_diagnostic">Android sharing diagnostic</string>
+    <string name="bridge_ready">Android bridge ready</string>
+    <string name="bridge_ready_explanation">Share harmless text or a URL from another app and choose Second Brain. This diagnostic bridge does not save anything.</string>
+    <string name="share_received">Share received</string>
+    <string name="nothing_saved">The Android bridge received this harmless test content. Nothing was saved. Continue only to verify the existing web diagnostic.</string>
+    <string name="no_text_provided">No text was provided.</string>
+    <string name="test_too_long">This test is too long for the temporary GET diagnostic. Nothing was sent to the website.</string>
+    <string name="open_web_diagnostic">Open web diagnostic</string>
+    <string name="close">Close</string>
+    <string name="no_browser_available">No browser is available to open the diagnostic.</string>
+</resources>
