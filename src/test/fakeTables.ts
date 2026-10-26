@@ -21,6 +21,12 @@ export function createTableClient(
   failures: Partial<
     Record<`${keyof FakeTables}.${'delete' | 'insert' | 'update'}`, Result['error']>
   > = {},
+  /** Fails single calls, e.g. deleting one particular capture. */
+  failWhen?: (call: {
+    filters: [string, unknown][];
+    op: string;
+    table: keyof FakeTables;
+  }) => Result['error'] | undefined,
 ) {
   const calls: { op: string; payload?: unknown; table: string }[] = [];
 
@@ -53,7 +59,9 @@ export function createTableClient(
 
     function run(): Result {
       calls.push({ op, payload, table });
-      const failure = op !== 'select' ? failures[`${table}.${op}`] : undefined;
+      const failure =
+        (op !== 'select' ? failures[`${table}.${op}`] : undefined) ??
+        failWhen?.({ filters, op, table });
       if (failure) {
         return { data: null, error: failure };
       }
@@ -131,18 +139,20 @@ export function createTableClient(
     return builder;
   }
 
+  const bucket = {
+    createSignedUrl: vi
+      .fn()
+      .mockResolvedValue({ data: { signedUrl: 'https://x.test/i' }, error: null }),
+    createSignedUrls: vi.fn().mockResolvedValue({ data: [], error: null }),
+    list: vi.fn().mockResolvedValue({ data: [], error: null }),
+    remove: vi.fn().mockResolvedValue({ data: [], error: null }),
+  };
+  const storageFrom = vi.fn(() => bucket);
   const client = {
     from: vi.fn((table: keyof FakeTables) => query(table)),
     rpc: vi.fn(),
-    storage: {
-      from: vi.fn(() => ({
-        createSignedUrl: vi
-          .fn()
-          .mockResolvedValue({ data: { signedUrl: 'https://x.test/i' }, error: null }),
-        createSignedUrls: vi.fn().mockResolvedValue({ data: [], error: null }),
-      })),
-    },
+    storage: { from: storageFrom },
   } as unknown as SecondBrainClient;
 
-  return { calls, client };
+  return { bucket, calls, client, storageFrom };
 }

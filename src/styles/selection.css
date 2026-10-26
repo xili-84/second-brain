@@ -1,0 +1,141 @@
+/* Select mode in capture lists: tick rows, then act on them from one bar. */
+
+.page-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.page-header__select {
+  padding: 0 var(--space-3);
+}
+
+/* ---------- Selectable rows ---------- */
+
+.row__select {
+  align-items: flex-start;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The real checkbox covers the row's check mark: native semantics, custom look. */
+.row__check-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.row--selectable {
+  position: relative;
+  transition: background-color var(--dur) var(--ease);
+}
+
+.row__check {
+  display: inline-flex;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  /* Lines the circle up with the first line of the headline. */
+  margin-top: -0.0625rem;
+  border: 1.5px solid var(--field-border);
+  border-radius: var(--radius-full);
+  color: transparent;
+  background: var(--surface);
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.row__check .icon {
+  width: 0.9375rem;
+  height: 0.9375rem;
+  stroke-width: 3;
+}
+
+.row__select:hover .row__check {
+  border-color: var(--ink);
+}
+
+.row__select:has(.row__check-input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.row--selected .row__check {
+  border-color: var(--ink);
+  color: var(--on-primary);
+  background: var(--ink);
+}
+
+/* A quiet wash and a red edge, like a marked-up proof. */
+.row--selected {
+  background: var(--bg-sunken);
+  box-shadow: inset var(--rule-heavy) 0 0 var(--accent);
+}
+
+.row--selectable .row__select {
+  padding-right: var(--space-2);
+  padding-left: var(--space-3);
+}
+
+.row--selectable .row__title {
+  text-decoration: none;
+}
+
+/* ---------- Bulk action bar ---------- */
+
+.selection-bar {
+  position: -webkit-sticky;
+  position: sticky;
+  bottom: var(--space-4);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border: var(--rule-hair) solid var(--rule);
+  border-top: var(--rule-heavy) solid var(--rule-strong);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  box-shadow: var(--shadow-pop);
+}
+
+.selection-bar__count {
+  flex: 1;
+  min-width: 0;
+  font: var(--text-label);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.selection-bar__all {
+  padding: 0 var(--space-3);
+}
+
+.selection-bar__delete {
+  padding: 0 var(--space-4);
+}
+
+@media (max-width: 47.99rem) {
+  /* Pinned to the thumb zone, just above the tab bar. */
+  .selection-bar {
+    position: fixed;
+    right: 0;
+    bottom: calc(var(--tabbar-h) + var(--safe-bottom));
+    left: 0;
+    margin: 0;
+    padding: var(--space-2) calc(var(--gutter) + var(--safe-right)) var(--space-2)
+      calc(var(--gutter) + var(--safe-left));
+    border-width: var(--rule-heavy) 0 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .page--selecting {
+    padding-bottom: calc(var(--tap) + var(--space-6));
+  }
+}

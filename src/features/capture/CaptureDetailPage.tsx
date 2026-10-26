@@ -27,11 +27,8 @@ import {
 import { validateCaptureDraft, type CaptureDraft, type CaptureKind } from './captureDraft';
 import { validateImageFile } from './imageCapture';
 import { replaceImageAttachment, type StoredImageAttachment } from './imageReplacement';
-import {
-  createImageSignedUrl,
-  DOWNLOAD_URL_TTL_SECONDS,
-  removeCaptureImageObjects,
-} from './imageStorage';
+import { createImageSignedUrl, DOWNLOAD_URL_TTL_SECONDS } from './imageStorage';
+import { deleteCapture } from './deleteCapture';
 import { ArticleHeader } from './detail/ArticleHeader';
 import { CaptureBody } from './detail/CaptureBody';
 import { CaptureEditForm } from './detail/CaptureEditForm';
@@ -43,11 +40,7 @@ import { FavoriteButton } from '../tags/FavoriteButton';
 import { TagEditor } from '../tags/TagEditor';
 import type { EmbeddedCaptureTags } from '../tags/tagNames';
 import { useCaptureMeta } from '../tags/useCaptureMeta';
-import {
-  removeLinkPreviewImage,
-  selectWithPreview,
-  type LinkPreviewFields,
-} from '../linkPreview/linkPreview';
+import { selectWithPreview, type LinkPreviewFields } from '../linkPreview/linkPreview';
 import { useLinkPreview } from '../linkPreview/useLinkPreview';
 
 type CaptureRecord = LinkPreviewFields & {
@@ -453,7 +446,7 @@ export function CaptureDetailPage() {
     }
   }
 
-  async function deleteCapture() {
+  async function confirmDelete() {
     if (!capture || !session || pendingAction || !isConfirmingDelete) {
       return;
     }
@@ -462,45 +455,22 @@ export function CaptureDetailPage() {
     setMessage(null);
     setPendingAction('delete');
 
-    let deleted = false;
+    const result = await deleteCapture(client, session.user.id, {
+      attachments: capture.attachments,
+      id: capture.id,
+      kind: capture.kind,
+      link_image_path: linkPreview.fields.link_image_path,
+    });
 
-    if (capture.kind === 'image') {
-      const paths = capture.attachments.map((attachment) => attachment.storage_path);
-      const storageError = await removeCaptureImageObjects(
-        client,
-        session.user.id,
-        capture.id,
-        paths,
-      );
-
-      if (storageError) {
-        // Close the sheet so the error is visible on the page; Delete can simply be tried again.
-        setIsConfirmingDelete(false);
-        setError('The private image was not removed. Nothing else was deleted; please retry.');
-        setPendingAction(null);
-        return;
-      }
-
-      const { data, error: deleteError } = await client.rpc('delete_image_capture_after_storage', {
-        p_capture_id: capture.id,
-      });
-      deleted = !deleteError && data === true;
-    } else {
-      if (capture.kind === 'link') {
-        // Best effort first: the preview image is private, and a leftover would only waste space.
-        await removeLinkPreviewImage(client, linkPreview.fields.link_image_path);
-      }
-      const { data, error: deleteError } = await client
-        .from('captures')
-        .delete()
-        .eq('id', capture.id)
-        .eq('user_id', session.user.id)
-        .select('id')
-        .single();
-      deleted = !deleteError && Boolean(data);
+    if (!result.ok && result.reason === 'storage') {
+      // Close the sheet so the error is visible on the page; Delete can simply be tried again.
+      setIsConfirmingDelete(false);
+      setError('The private image was not removed. Nothing else was deleted; please retry.');
+      setPendingAction(null);
+      return;
     }
 
-    if (!deleted) {
+    if (!result.ok) {
       setIsConfirmingDelete(false);
       setError(
         capture.kind === 'image'
@@ -763,7 +733,7 @@ export function CaptureDetailPage() {
           isDeleting={pendingAction === 'delete'}
           isImage={capture.kind === 'image'}
           onCancel={() => setIsConfirmingDelete(false)}
-          onConfirm={() => void deleteCapture()}
+          onConfirm={() => void confirmDelete()}
         />
       )}
     </section>

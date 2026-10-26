@@ -12,6 +12,9 @@ type CaptureRiverProps = {
   captures: CaptureSummary[];
   isBusy: boolean;
   onToggleFavorite: (capture: CaptureSummary) => void;
+  /** Present in select mode: which rows are ticked, and how to toggle one. */
+  selection?:
+    { onToggle: (capture: CaptureSummary) => void; selectedIds: ReadonlySet<string> } | undefined;
   status: CaptureStatus;
   thumbnails: Record<string, string>;
 };
@@ -21,13 +24,17 @@ export function CaptureRiver({
   captures,
   isBusy,
   onToggleFavorite,
+  selection,
   status,
   thumbnails,
 }: CaptureRiverProps) {
   const details = captureStatusDetails[status];
 
   return (
-    <div aria-busy={isBusy} className="river-groups">
+    <div
+      aria-busy={isBusy}
+      className={selection ? 'river-groups river-groups--selecting' : 'river-groups'}
+    >
       {groupByDay(captures).map((group) => (
         <section aria-labelledby={`group-${group.label}`} className="river-group" key={group.label}>
           <h2 className="river-group__label" id={`group-${group.label}`}>
@@ -69,6 +76,12 @@ export function CaptureRiver({
                   key={capture.id}
                   kind={capture.kind}
                   section={details.path}
+                  selection={
+                    selection && {
+                      isSelected: selection.selectedIds.has(capture.id),
+                      onToggle: () => selection.onToggle(capture),
+                    }
+                  }
                   showThumbnail={isImage || Boolean(isLink && thumbnail)}
                   tags={
                     <TagList tags={tagsFromEmbed(capture.capture_tags).map((tag) => tag.name)} />

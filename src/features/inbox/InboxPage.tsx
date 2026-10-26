@@ -1,4 +1,4 @@
-import { Filter, Plus, RefreshCw, Search } from 'lucide-react';
+import { Filter, ListChecks, Plus, RefreshCw, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
@@ -12,6 +12,9 @@ import { captureStatusDetails, type CaptureStatus } from '../capture/captureLife
 import { CaptureSearchResults } from '../search/CaptureSearchResults';
 import { parseSearchTerms, SEARCH_RESULT_LIMIT } from '../search/searchCaptures';
 import { SearchField } from '../search/SearchField';
+import { BulkDeleteSheet } from '../selection/BulkDeleteSheet';
+import { SelectionBar } from '../selection/SelectionBar';
+import { useBulkSelection } from '../selection/useBulkSelection';
 import { useCaptureSearch } from '../search/useCaptureSearch';
 import { FilterBar, type ListFilter } from '../tags/FilterBar';
 import { setFavorite } from '../tags/tagsApi';
@@ -168,6 +171,21 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
   // Only the rows on screen get thumbnails, in one batched request.
   const thumbnails = useThumbnails(client, visibleCaptures, !isSearching);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  const selection = useBulkSelection({
+    client,
+    onDeleted: list.remove,
+    userId,
+    visible: visibleCaptures,
+  });
+  const isSelecting = selection.isSelecting && !isSearching;
+  const stopSelecting = selection.stop;
+
+  // Searching (or emptying the list) leaves select mode.
+  useEffect(() => {
+    if (selection.isSelecting && (isSearching || (!list.isLoading && list.captures.length === 0))) {
+      stopSelecting();
+    }
+  }, [isSearching, list.captures.length, list.isLoading, selection.isSelecting, stopSelecting]);
 
   async function toggleFavorite(capture: CaptureSummary) {
     const next = !capture.is_favorite;
@@ -234,24 +252,49 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
         : plural(list.captures.length, 'item');
 
   return (
-    <section aria-labelledby="capture-list-heading" className="page">
+    <section
+      aria-labelledby="capture-list-heading"
+      className={isSelecting ? 'page page--selecting' : 'page'}
+    >
       <PageHeader
         actions={
           isSearching ? (
             <button className="btn btn--ghost" onClick={clearAndRefocus} type="button">
               Clear search
             </button>
-          ) : (
+          ) : isSelecting ? (
             <button
-              className="icon-btn"
-              disabled={list.isLoading}
-              onClick={() => void list.reload()}
-              title="Refresh"
+              className="btn btn--ghost"
+              disabled={selection.progress !== null}
+              onClick={selection.stop}
               type="button"
             >
-              <RefreshCw aria-hidden="true" className="icon" />
-              <span className="visually-hidden">Refresh</span>
+              Done
             </button>
+          ) : (
+            <div className="page-header__actions">
+              {list.captures.length > 0 && (
+                <button
+                  className="btn btn--ghost page-header__select"
+                  disabled={list.isLoading}
+                  onClick={selection.start}
+                  type="button"
+                >
+                  <ListChecks aria-hidden="true" className="icon" />
+                  Select
+                </button>
+              )}
+              <button
+                className="icon-btn"
+                disabled={list.isLoading}
+                onClick={() => void list.reload()}
+                title="Refresh"
+                type="button"
+              >
+                <RefreshCw aria-hidden="true" className="icon" />
+                <span className="visually-hidden">Refresh</span>
+              </button>
+            </div>
           )
         }
         id="capture-list-heading"
@@ -281,7 +324,8 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
 
           {search.status === 'ready' && search.results.length === 0 && (
             <EmptyState icon={Search} title={`No captures match “${urlQuery}”.`}>
-              Search looks at titles, notes, links and tags in Inbox, Reviewed and Archived.
+              Search looks at titles, notes, links, page titles and tags in Inbox, Reviewed and
+              Archived.
             </EmptyState>
           )}
 
@@ -313,6 +357,15 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
           )}
 
           {favoriteError && <Notice tone="error">{favoriteError}</Notice>}
+
+          {selection.notice && (
+            <Notice tone={selection.notice.tone}>
+              <span>{selection.notice.text}</span>
+              <button className="btn btn--ghost" onClick={selection.dismissNotice} type="button">
+                Dismiss
+              </button>
+            </Notice>
+          )}
 
           {list.isLoading && list.captures.length === 0 && <SkeletonRows />}
 
@@ -359,9 +412,37 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
             captures={visibleCaptures}
             isBusy={list.isLoading}
             onToggleFavorite={(capture) => void toggleFavorite(capture)}
+            selection={
+              isSelecting
+                ? {
+                    onToggle: (capture) => selection.toggle(capture.id),
+                    selectedIds: selection.selectedIds,
+                  }
+                : undefined
+            }
             status={status}
             thumbnails={thumbnails}
           />
+
+          {isSelecting && (
+            <SelectionBar
+              isDeleting={selection.progress !== null}
+              onDelete={selection.requestDelete}
+              onToggleAll={selection.toggleAll}
+              selectedCount={selection.selected.length}
+              visibleCount={visibleCaptures.length}
+            />
+          )}
+
+          {isSelecting && selection.isConfirming && (
+            <BulkDeleteSheet
+              count={selection.selected.length}
+              imageCount={selection.selected.filter((capture) => capture.kind === 'image').length}
+              onCancel={selection.cancelDelete}
+              onConfirm={() => void selection.confirmDelete()}
+              progress={selection.progress}
+            />
+          )}
         </>
       )}
     </section>

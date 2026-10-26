@@ -1,4 +1,4 @@
-import { Star } from 'lucide-react';
+import { Check, Star } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -22,6 +22,8 @@ type CaptureRowProps = {
   showThumbnail?: boolean;
   /** The section to keep highlighted when the capture opens. */
   section: string;
+  /** In select mode the row is one big checkbox instead of a link. */
+  selection?: { isSelected: boolean; onToggle: () => void } | undefined;
   status?: string;
   tags?: ReactNode;
   thumbnailUrl?: string | undefined;
@@ -40,6 +42,7 @@ export function CaptureRow({
   href,
   kind,
   section,
+  selection,
   showThumbnail = false,
   status,
   tags,
@@ -49,40 +52,71 @@ export function CaptureRow({
 }: CaptureRowProps) {
   const state: SectionState = { section };
 
+  const content = (
+    <>
+      <div className="row__main">
+        <h3 className={titleIsUrl ? 'row__title row__title--url' : 'row__title'}>{title}</h3>
+        {excerpt && <p className="row__excerpt">{excerpt}</p>}
+        <p className="row__meta">
+          {favorite?.isFavorite && (!favorite.onToggle || selection) && (
+            <span className="row__fav-mark" title="Favorite">
+              <Star aria-hidden="true" className="icon" />
+              <span className="visually-hidden">Favorite</span>
+            </span>
+          )}
+          <span className="kicker">{kind}</span>
+          {status && <span className="chip">{status}</span>}
+          {domain && (
+            <>
+              <span aria-hidden="true" className="dot-sep" />
+              {favicon && (
+                <img alt="" className="row__favicon" height="14" src={favicon} width="14" />
+              )}
+              <span className="row__domain">{domain}</span>
+            </>
+          )}
+          <span aria-hidden="true" className="dot-sep" />
+          <time dateTime={createdAt}>{relativeTime(createdAt)}</time>
+        </p>
+        {tags}
+      </div>
+      {showThumbnail && (
+        <span className="row__thumb">
+          {thumbnailUrl && <img alt="" decoding="async" loading="lazy" src={thumbnailUrl} />}
+        </span>
+      )}
+    </>
+  );
+
+  if (selection) {
+    const name = accessibleName.replace(/^Open /u, '');
+    return (
+      <li
+        className={
+          selection.isSelected ? 'row row--selectable row--selected' : 'row row--selectable'
+        }
+      >
+        <label className="row__link row__select">
+          <input
+            aria-label={`Select ${name}`}
+            checked={selection.isSelected}
+            className="row__check-input"
+            onChange={selection.onToggle}
+            type="checkbox"
+          />
+          <span aria-hidden="true" className="row__check">
+            <Check className="icon" />
+          </span>
+          {content}
+        </label>
+      </li>
+    );
+  }
+
   return (
     <li className={favorite?.onToggle ? 'row row--with-action' : 'row'}>
       <Link aria-label={accessibleName} className="row__link" state={state} to={href}>
-        <div className="row__main">
-          <h3 className={titleIsUrl ? 'row__title row__title--url' : 'row__title'}>{title}</h3>
-          {excerpt && <p className="row__excerpt">{excerpt}</p>}
-          <p className="row__meta">
-            {favorite?.isFavorite && !favorite.onToggle && (
-              <span className="row__fav-mark" title="Favorite">
-                <Star aria-hidden="true" className="icon" />
-                <span className="visually-hidden">Favorite</span>
-              </span>
-            )}
-            <span className="kicker">{kind}</span>
-            {status && <span className="chip">{status}</span>}
-            {domain && (
-              <>
-                <span aria-hidden="true" className="dot-sep" />
-                {favicon && (
-                  <img alt="" className="row__favicon" height="14" src={favicon} width="14" />
-                )}
-                <span className="row__domain">{domain}</span>
-              </>
-            )}
-            <span aria-hidden="true" className="dot-sep" />
-            <time dateTime={createdAt}>{relativeTime(createdAt)}</time>
-          </p>
-          {tags}
-        </div>
-        {showThumbnail && (
-          <span className="row__thumb">
-            {thumbnailUrl && <img alt="" decoding="async" loading="lazy" src={thumbnailUrl} />}
-          </span>
-        )}
+        {content}
       </Link>
       {favorite?.onToggle && (
         <FavoriteButton

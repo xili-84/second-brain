@@ -77,11 +77,20 @@ export function useCaptureList(
     }));
   }, []);
 
+  /** Drops rows from the list locally, e.g. after they were deleted. */
+  const remove = useCallback((ids: readonly string[]) => {
+    const gone = new Set(ids);
+    setState((current) => ({
+      ...current,
+      captures: current.captures.filter((capture) => !gone.has(capture.id)),
+    }));
+  }, []);
+
   // A preview fetched after saving (or from the detail page) shows up without a reload.
   useEffect(
     () => subscribeToLinkPreviews(({ captureId, preview }) => patch(captureId, preview)),
     [patch],
   );
 
-  return { ...state, patch, reload };
+  return { ...state, patch, reload, remove };
 }
