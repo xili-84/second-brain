@@ -44,7 +44,16 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       // A waiting update must never reload an open editor and discard an unsaved draft.
       registerType: 'prompt',
-      includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
+      includeAssets: [
+        'favicon.ico',
+        'favicon.svg',
+        'icons/apple-touch-icon.png',
+        'icons/favicon-32.png',
+        'icons/icon-192.png',
+        'icons/icon-512.png',
+        'icons/icon-maskable-192.png',
+        'icons/icon-maskable-512.png',
+      ],
       manifest: {
         id: '/',
         name: 'Second Brain',
@@ -53,20 +62,23 @@ export default defineConfig(({ mode }) => ({
         start_url: '/',
         scope: '/',
         display: 'standalone',
+        // Matches the paper colour of the light theme and the launch splash.
         background_color: '#ffffff',
         theme_color: '#ffffff',
         icons: [
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           {
-            src: '/icons/icon-192.png',
+            src: '/icons/icon-maskable-192.png',
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any',
+            purpose: 'maskable',
           },
           {
-            src: '/icons/icon-512.png',
+            src: '/icons/icon-maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'maskable',
           },
         ],
       },

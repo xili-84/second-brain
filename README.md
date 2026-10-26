@@ -130,6 +130,20 @@ no `color-mix()` or `:has()` (older Android WebViews), so state is expressed wit
 translucent `.glass` bars fall back to solid colour without `backdrop-filter`; every tap target is
 at least 44 px (`--tap`).
 
+## Brand assets
+
+The icon is the wordmark reduced to its initial: a heavy Inter "S" and the red dot. All PWA icons
+(any + maskable, favicon, apple-touch), Android launcher layers (adaptive foreground, background,
+monochrome for themed icons, legacy PNGs) and the light/dark launch splash are generated from one
+geometry:
+
+```bash
+python3 scripts/brand/build_brand_assets.py   # needs fonttools, brotli, Pillow and rsvg-convert
+```
+
+Sources land in `resources/brand/`. Splash colours live in `values/splash_colors.xml` and
+`values-night/splash_colors.xml`.
+
 ## Project layout
 
 ```text
