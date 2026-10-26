@@ -2,12 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 
 import type { SecondBrainClient } from '../../lib/supabase/client';
 import type { CaptureStatus } from '../capture/captureLifecycle';
+import type { EmbeddedCaptureTags } from '../tags/tagNames';
 
 export type CaptureSummary = {
   attachments?: { storage_path: string }[];
+  capture_tags?: EmbeddedCaptureTags;
   content: string | null;
   created_at: string;
   id: string;
+  is_favorite?: boolean;
   kind: string;
   source_url: string | null;
   title: string | null;
@@ -36,7 +39,9 @@ export function useCaptureList(
 
     const { data, error } = await client
       .from('captures')
-      .select('id, kind, title, content, source_url, created_at, attachments(storage_path)')
+      .select(
+        'id, kind, title, content, source_url, created_at, is_favorite, attachments(storage_path), capture_tags(tags(id, name))',
+      )
       .eq('status', status)
       .order('created_at', { ascending: false });
 
@@ -51,5 +56,15 @@ export function useCaptureList(
     void reload();
   }, [reload]);
 
-  return { ...state, reload };
+  /** Local, optimistic change to one row (for example a favorite toggle). */
+  const patch = useCallback((id: string, update: Partial<CaptureSummary>) => {
+    setState((current) => ({
+      ...current,
+      captures: current.captures.map((capture) =>
+        capture.id === id ? { ...capture, ...update } : capture,
+      ),
+    }));
+  }, []);
+
+  return { ...state, patch, reload };
 }

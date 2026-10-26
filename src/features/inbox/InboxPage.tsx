@@ -1,5 +1,5 @@
-import { Plus, RefreshCw, Search } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Filter, Plus, RefreshCw, Search } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { sections } from '../../app/navigation';
@@ -13,8 +13,11 @@ import { CaptureSearchResults } from '../search/CaptureSearchResults';
 import { parseSearchTerms, SEARCH_RESULT_LIMIT } from '../search/searchCaptures';
 import { SearchField } from '../search/SearchField';
 import { useCaptureSearch } from '../search/useCaptureSearch';
+import { FilterBar, type ListFilter } from '../tags/FilterBar';
+import { setFavorite } from '../tags/tagsApi';
+import { tagKey, tagsFromEmbed } from '../tags/tagNames';
 import { CaptureRiver } from './CaptureRiver';
-import { useCaptureList } from './useCaptureList';
+import { useCaptureList, type CaptureSummary } from './useCaptureList';
 import { useThumbnails } from './useThumbnails';
 
 export const SEARCH_DEBOUNCE_MS = 250;
@@ -83,6 +86,58 @@ function useSearchQuery() {
   return { clear, commit, draft, setDraft, urlQuery };
 }
 
+/** ?fav=1 and ?tag=name keep the list filter in the address, like the search query. */
+function useListFilter() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filter: ListFilter = {
+    favorites: searchParams.get('fav') === '1',
+    tag: searchParams.get('tag')?.trim() || null,
+  };
+
+  const setFilter = useCallback(
+    (next: ListFilter) => {
+      setSearchParams(
+        (current) => {
+          const params = new URLSearchParams(current);
+          if (next.favorites) {
+            params.set('fav', '1');
+          } else {
+            params.delete('fav');
+          }
+          if (next.tag) {
+            params.set('tag', next.tag);
+          } else {
+            params.delete('tag');
+          }
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  return { filter, setFilter };
+}
+
+function tagCountsOf(captures: CaptureSummary[]) {
+  const counts = new Map<string, { count: number; name: string }>();
+  for (const capture of captures) {
+    for (const tag of tagsFromEmbed(capture.capture_tags)) {
+      const entry = counts.get(tagKey(tag.name));
+      if (entry) {
+        entry.count += 1;
+      } else {
+        counts.set(tagKey(tag.name), { count: 1, name: tag.name });
+      }
+    }
+  }
+  // Most used first, then alphabetical.
+  return [...counts.values()].sort(
+    (a, b) => b.count - a.count || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+  );
+}
+
 export function CaptureListPage({ status }: { status: CaptureStatus }) {
   const { client, session } = useAuth();
   const userId = session?.user.id;
@@ -95,7 +150,36 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
   const { retry: retrySearch, state: search } = useCaptureSearch(client, urlQuery, Boolean(userId));
   const isSearching = urlQuery !== '';
   const terms = parseSearchTerms(urlQuery);
-  const thumbnails = useThumbnails(client, list.captures, !isSearching);
+  const { filter, setFilter } = useListFilter();
+  const isFiltered = filter.favorites || filter.tag !== null;
+  const tagCounts = useMemo(() => tagCountsOf(list.captures), [list.captures]);
+  const visibleCaptures = useMemo(
+    () =>
+      list.captures.filter(
+        (capture) =>
+          (!filter.favorites || capture.is_favorite) &&
+          (!filter.tag ||
+            tagsFromEmbed(capture.capture_tags).some(
+              (tag) => tagKey(tag.name) === tagKey(filter.tag ?? ''),
+            )),
+      ),
+    [filter.favorites, filter.tag, list.captures],
+  );
+  // Only the rows on screen get thumbnails, in one batched request.
+  const thumbnails = useThumbnails(client, visibleCaptures, !isSearching);
+  const [favoriteError, setFavoriteError] = useState<string | null>(null);
+
+  async function toggleFavorite(capture: CaptureSummary) {
+    const next = !capture.is_favorite;
+    setFavoriteError(null);
+    list.patch(capture.id, { is_favorite: next });
+    try {
+      await setFavorite(client, capture.id, next);
+    } catch {
+      list.patch(capture.id, { is_favorite: !next });
+      setFavoriteError('The favorite could not be saved. Check your connection and try again.');
+    }
+  }
 
   // "/" jumps to the search box from anywhere on the page.
   useEffect(() => {
@@ -145,7 +229,9 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
         : 'Searching…'
     : list.isLoading
       ? 'Loading…'
-      : plural(list.captures.length, 'item');
+      : isFiltered
+        ? `${visibleCaptures.length} of ${plural(list.captures.length, 'item')}`
+        : plural(list.captures.length, 'item');
 
   return (
     <section aria-labelledby="capture-list-heading" className="page">
@@ -195,7 +281,7 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
 
           {search.status === 'ready' && search.results.length === 0 && (
             <EmptyState icon={Search} title={`No captures match “${urlQuery}”.`}>
-              Search looks at titles, notes and links in Inbox, Reviewed and Archived.
+              Search looks at titles, notes, links and tags in Inbox, Reviewed and Archived.
             </EmptyState>
           )}
 
@@ -222,7 +308,33 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
             </Notice>
           )}
 
+          {(list.captures.length > 0 || isFiltered) && (
+            <FilterBar filter={filter} onChange={setFilter} tagCounts={tagCounts} />
+          )}
+
+          {favoriteError && <Notice tone="error">{favoriteError}</Notice>}
+
           {list.isLoading && list.captures.length === 0 && <SkeletonRows />}
+
+          {!list.isLoading && list.captures.length > 0 && visibleCaptures.length === 0 && (
+            <EmptyState
+              action={
+                <button
+                  className="btn btn--secondary"
+                  onClick={() => setFilter({ favorites: false, tag: null })}
+                  type="button"
+                >
+                  Clear filters
+                </button>
+              }
+              icon={Filter}
+              title="Nothing matches these filters"
+            >
+              {filter.tag
+                ? `No ${filter.favorites ? 'favorite ' : ''}captures here are tagged #${filter.tag}.`
+                : 'Star a capture to keep it in Favorites.'}
+            </EmptyState>
+          )}
 
           {!list.isLoading && list.captures.length === 0 && !list.error && (
             <EmptyState
@@ -244,8 +356,9 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
           )}
 
           <CaptureRiver
-            captures={list.captures}
+            captures={visibleCaptures}
             isBusy={list.isLoading}
+            onToggleFavorite={(capture) => void toggleFavorite(capture)}
             status={status}
             thumbnails={thumbnails}
           />

@@ -39,12 +39,18 @@ import { CaptureImage } from './detail/CaptureImage';
 import { DeleteSheet } from './detail/DeleteSheet';
 import { ImageReplacement } from './detail/ImageReplacement';
 import { isNativeImageSaveAvailable, saveImageToPhone } from './nativeImageSaver';
+import { FavoriteButton } from '../tags/FavoriteButton';
+import { TagEditor } from '../tags/TagEditor';
+import type { EmbeddedCaptureTags } from '../tags/tagNames';
+import { useCaptureMeta } from '../tags/useCaptureMeta';
 
 type CaptureRecord = {
   attachments: StoredImageAttachment[];
+  capture_tags?: EmbeddedCaptureTags;
   content: string | null;
   created_at: string;
   id: string;
+  is_favorite?: boolean;
   kind: string;
   source_url: string | null;
   status: string;
@@ -107,6 +113,7 @@ export function CaptureDetailPage() {
   const { client, session } = useAuth();
   const userId = session?.user.id;
   const [capture, setCapture] = useState<CaptureRecord | null>(null);
+  const meta = useCaptureMeta(client, session?.user.id, capture);
   const [draft, setDraft] = useState<CaptureDraft | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -142,7 +149,7 @@ export function CaptureDetailPage() {
     const { data, error: loadError } = await client
       .from('captures')
       .select(
-        'id, kind, status, title, content, source_url, created_at, updated_at, attachments(id, storage_path, original_name, mime_type, size_bytes)',
+        'id, kind, status, title, content, source_url, created_at, updated_at, is_favorite, attachments(id, storage_path, original_name, mime_type, size_bytes), capture_tags(tags(id, name))',
       )
       .eq('id', captureId)
       .eq('user_id', userId)
@@ -590,6 +597,7 @@ export function CaptureDetailPage() {
 
   const topActions = !isEditing && (
     <>
+      <FavoriteButton isFavorite={meta.isFavorite} onToggle={() => void meta.toggleFavorite()} />
       {capture.kind === 'image' && isNativeApp && attachment && imageUrl && (
         <IconButton
           disabled={isSavingToPhone || hasSavedToPhone}
@@ -629,7 +637,19 @@ export function CaptureDetailPage() {
       />
 
       {error && <Notice tone="error">{error}</Notice>}
+      {meta.error && <Notice tone="error">{meta.error}</Notice>}
       {message && <Notice tone="success">{message}</Notice>}
+
+      {!isEditing && (
+        <div className="article-tags">
+          <TagEditor
+            applied={meta.tags}
+            library={meta.library}
+            onAdd={(name) => void meta.addTag(name)}
+            onRemove={(name) => void meta.removeTag(name)}
+          />
+        </div>
+      )}
 
       {capture.kind === 'image' && !isReplacingImage && (
         <CaptureImage

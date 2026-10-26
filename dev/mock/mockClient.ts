@@ -165,6 +165,36 @@ for (const c of captures) {
     : [];
 }
 
+// Tags and favorites.
+const tags: Row[] = ['okdaily', 'Ideas', 'Design', 'Admin', 'Reels'].map((name, index) => ({
+  id: `t0000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+  name,
+  user_id: USER_ID,
+}));
+const tagId = (name: string) => String(tags.find((tag) => tag.name === name)?.id);
+const captureTags: Row[] = [];
+const seedTags: Record<number, string[]> = {
+  1: ['okdaily'],
+  2: ['Ideas', 'okdaily'],
+  3: ['Design', 'okdaily'],
+  4: ['Design'],
+  5: ['Admin'],
+  7: ['Design'],
+  8: ['Reels', 'Ideas'],
+  9: ['okdaily'],
+};
+captures.forEach((capture, index) => {
+  capture.is_favorite = [2, 3, 10].includes(index + 1);
+  for (const name of seedTags[index + 1] ?? []) {
+    captureTags.push({ capture_id: capture.id, tag_id: tagId(name), user_id: USER_ID });
+  }
+});
+const tagsOf = (captureId: unknown) =>
+  captureTags
+    .filter((link) => link.capture_id === captureId)
+    .map((link) => tags.find((tag) => tag.id === link.tag_id))
+    .filter(Boolean) as Row[];
+
 const delay = <T>(value: T, isData = false) =>
   new Promise<T>((resolve) =>
     setTimeout(() => resolve(value), flags.slow || (isData && flags.slowData) ? 10_000_000 : 120),
@@ -175,7 +205,9 @@ function pick(row: Row, columns: string) {
   const out: Row = {};
   for (const part of columns.split(/,(?![^(]*\))/)) {
     const key = (part.trim().split('(')[0] ?? '').trim();
-    if (key) out[key] = row[key];
+    if (key === 'capture_tags') {
+      out[key] = tagsOf(row.id).map((tag) => ({ tags: { id: tag.id, name: tag.name } }));
+    } else if (key) out[key] = row[key];
   }
   return out;
 }
@@ -235,17 +267,36 @@ class Query implements PromiseLike<{ data: unknown; error: unknown; count?: numb
     return this;
   }
   private run() {
-    if (this.table !== 'captures')
-      return { data: null, error: { message: 'mock: unsupported table' } };
-    const source = flags.empty ? [] : captures;
+    const table =
+      this.table === 'captures'
+        ? captures
+        : this.table === 'tags'
+          ? tags
+          : this.table === 'capture_tags'
+            ? captureTags
+            : null;
+    if (!table) return { data: null, error: { message: 'mock: unsupported table' } };
+    const source = flags.empty ? [] : table;
     if (this.mode === 'insert' && this.payload) {
-      const row = { ...this.payload, created_at: new Date().toISOString(), attachments: [] };
-      captures.unshift(row);
-      return { data: pick(row, this.columns), error: null };
+      const row: Row =
+        this.table === 'tags'
+          ? { ...this.payload, id: `t-${Date.now()}` }
+          : this.table === 'capture_tags'
+            ? { ...this.payload }
+            : { ...this.payload, created_at: new Date().toISOString(), attachments: [] };
+      table.unshift(row);
+      return {
+        data: this.isSingle ? pick(row, this.columns) : [pick(row, this.columns)],
+        error: null,
+      };
     }
-    let rows = source.filter((r) => this.filters.every(([c, v]) => r[c] === v));
+    let rows = source.filter((r) =>
+      this.filters.every(([c, v]) =>
+        c === 'normalized_name' ? String(r.name).toLowerCase() === v : r[c] === v,
+      ),
+    );
     if (this.mode === 'update' && this.payload) rows.forEach((r) => Object.assign(r, this.payload));
-    if (this.mode === 'delete') rows.forEach((r) => captures.splice(captures.indexOf(r), 1));
+    if (this.mode === 'delete') rows.forEach((r) => table.splice(table.indexOf(r), 1));
     if (this.orderBy) {
       const { col, asc } = this.orderBy;
       rows = [...rows].sort((a, b) => (String(a[col]) < String(b[col]) ? -1 : 1) * (asc ? 1 : -1));
@@ -309,14 +360,24 @@ export function createMockClient(): SecondBrainClient {
       const terms = (args.p_query ?? '').toLowerCase().split(/\s+/u).filter(Boolean);
       const results = captures.filter((row) =>
         terms.every((term) =>
-          [row.title, row.content, row.source_url].some((value) =>
-            String(value ?? '')
-              .toLowerCase()
-              .includes(term),
+          [row.title, row.content, row.source_url, ...tagsOf(row.id).map((tag) => tag.name)].some(
+            (value) =>
+              String(value ?? '')
+                .toLowerCase()
+                .includes(term),
           ),
         ),
       );
-      return delay({ data: results.map((row) => pick(row, '*')), error: null }, true);
+      return delay(
+        {
+          data: results.map((row) => ({
+            ...pick(row, '*'),
+            tags: tagsOf(row.id).map((tag) => String(tag.name)),
+          })),
+          error: null,
+        },
+        true,
+      );
     },
     storage: {
       from: () => ({

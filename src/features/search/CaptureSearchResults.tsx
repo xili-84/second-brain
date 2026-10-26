@@ -3,6 +3,7 @@ import type { KeyboardEvent, Ref } from 'react';
 import { captureStatusDetails } from '../capture/captureLifecycle';
 import { CaptureRow } from '../inbox/CaptureRow';
 import { captureTitle, displayUrl, domainOf, isUntitledLink } from '../inbox/listFormat';
+import { TagList } from '../tags/TagList';
 import { HighlightedText } from './HighlightedText';
 import { makeSnippet, splitHighlights } from './highlight';
 import type { CaptureSearchResult } from './searchCaptures';
@@ -40,10 +41,17 @@ function SearchResultRow({ result, terms }: { result: CaptureSearchResult; terms
       createdAt={result.created_at}
       domain={result.kind === 'link' ? domainOf(result.source_url) : null}
       excerpt={excerpt}
+      favorite={{ isFavorite: result.is_favorite }}
       href={`/captures/${result.id}`}
       kind={result.kind}
       section={details?.path ?? '/inbox'}
       status={statusLabel}
+      tags={
+        <TagList
+          render={(name) => <HighlightedText terms={terms} text={name} />}
+          tags={result.tags}
+        />
+      }
       title={<HighlightedText terms={terms} text={untitledLink ? displayUrl(title) : title} />}
       titleIsUrl={untitledLink}
     />

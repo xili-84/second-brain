@@ -1,0 +1,296 @@
+/* Tags, favorites and the list filter row. */
+
+/* ---------- Favorite star ---------- */
+
+.fav-btn--on {
+  color: var(--accent);
+}
+
+.fav-btn--on .icon {
+  fill: currentColor;
+}
+
+.fav-btn--on:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+/* A row with a star: the link keeps the whole row tappable, the star sits beside it. */
+.row--with-action {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.row--with-action .row__link {
+  flex: 1;
+  min-width: 0;
+}
+
+.row__fav {
+  margin-top: var(--space-2);
+  margin-right: calc(-1 * var(--space-2));
+  color: var(--ink-3);
+}
+
+@media (min-width: 48rem) {
+  .row__fav {
+    margin-top: var(--space-3);
+  }
+}
+
+.row__fav-mark {
+  display: inline-flex;
+  color: var(--accent);
+}
+
+.row__fav-mark .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  fill: currentColor;
+}
+
+/* ---------- Read-only tags (rows, results) ---------- */
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-1);
+  color: var(--ink-2);
+  font: var(--text-meta);
+}
+
+.tag-list__item {
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Tag editor ---------- */
+
+.tag-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tag-editor__chips {
+  display: contents;
+}
+
+.tag-chip {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  padding-left: var(--space-3);
+  border: var(--rule-hair) solid var(--field-border);
+  border-radius: var(--radius-full);
+  color: var(--ink);
+  font: var(--text-meta);
+}
+
+.tag-chip__name {
+  overflow-wrap: anywhere;
+}
+
+/* The visible circle is small, the tap area is not (pseudo-element widens it to 44px). */
+.tag-chip__remove {
+  position: relative;
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  color: var(--ink-3);
+  background: transparent;
+  cursor: pointer;
+}
+
+.tag-chip__remove::after {
+  position: absolute;
+  inset: -0.375rem;
+  content: '';
+}
+
+.tag-chip__remove:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.tag-chip__remove .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.tag-editor__field {
+  position: relative;
+  display: flex;
+  flex: 1 1 8rem;
+  min-width: 8rem;
+  align-items: center;
+}
+
+.tag-editor__icon {
+  position: absolute;
+  left: 0;
+  width: 1rem;
+  height: 1rem;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+.tag-editor__input {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 0 0 1.5rem;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  color: var(--ink);
+  background: transparent;
+  font: var(--text-small);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.tag-editor__input::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
+}
+
+.tag-editor__field:focus-within {
+  box-shadow: inset 0 -2px 0 var(--focus);
+}
+
+.tag-editor__list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 30;
+  min-width: 12rem;
+  max-width: 100%;
+  margin-top: var(--space-1);
+  padding: var(--space-1) 0;
+  border: var(--rule-hair) solid var(--rule);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+}
+
+.tag-editor__list[hidden] {
+  display: none;
+}
+
+.tag-editor__option {
+  display: flex;
+  min-height: var(--tap);
+  align-items: center;
+  padding: 0 var(--space-4);
+  font: var(--text-small);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.tag-editor__option:hover,
+.tag-editor__option--active {
+  background: var(--bg-sunken);
+}
+
+.article-tags {
+  padding: var(--space-3) 0;
+  border-bottom: var(--rule-hair) solid var(--rule);
+}
+
+.composer__tags {
+  padding: var(--space-3) 0;
+  border-top: var(--rule-hair) solid var(--rule);
+}
+
+/* ---------- Filter row ---------- */
+
+.filter-bar {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-3) calc(-1 * var(--gutter)) 0;
+  padding: var(--space-1) var(--gutter);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (min-width: 48rem) {
+  .filter-bar {
+    flex-wrap: wrap;
+    margin-right: 0;
+    margin-left: 0;
+    padding-right: 0;
+    padding-left: 0;
+    overflow: visible;
+  }
+}
+
+.filter-chip {
+  display: inline-flex;
+  flex: none;
+  min-height: 2.25rem;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+  border: var(--rule-hair) solid var(--rule);
+  border-radius: var(--radius-full);
+  color: var(--ink-2);
+  background: transparent;
+  font: var(--text-meta);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  position: relative;
+}
+
+/* Taller hit area than the drawn pill. */
+.filter-chip::after {
+  position: absolute;
+  inset: -0.25rem 0;
+  content: '';
+}
+
+.filter-chip .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.filter-chip:hover {
+  border-color: var(--field-border);
+  color: var(--ink);
+}
+
+.filter-chip--on,
+.filter-chip--on:hover {
+  border-color: var(--primary);
+  color: var(--bg);
+  background: var(--primary);
+}
+
+.filter-chip--on .icon {
+  fill: currentColor;
+}
+
+.filter-chip__count {
+  color: inherit;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.filter-chip--clear {
+  border-style: dashed;
+}
+
+.row__fav.fav-btn--on,
+.row__fav.fav-btn--on:hover:not(:disabled) {
+  color: var(--accent);
+}

@@ -17,6 +17,10 @@ import {
   type CaptureDraft,
   type CaptureKind,
 } from './captureDraft';
+import { TagEditor } from '../tags/TagEditor';
+import { applyTags } from '../tags/tagsApi';
+import { tagKey } from '../tags/tagNames';
+import { useTagLibrary } from '../tags/useTagLibrary';
 import { KindSwitch } from './composer/KindSwitch';
 import {
   createImageOperation,
@@ -45,6 +49,9 @@ export function QuickCapturePage() {
   const [imageOperation, setImageOperation] = useState<ImageOperation | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [isValidatingImage, setIsValidatingImage] = useState(false);
+  // Tags are saved right after the capture itself; a tag failure never undoes the capture.
+  const [tagNames, setTagNames] = useState<string[]>([]);
+  const tagLibrary = useTagLibrary(client, Boolean(session));
 
   useEffect(() => {
     if (!pendingShare || pendingShare.id === loadedShareId.current) {
@@ -183,6 +190,7 @@ export function QuickCapturePage() {
       }
 
       await clearPendingShare();
+      setTagNames([]);
       setDraft(createEmptyDraft());
       loadedShareId.current = null;
       setHasSaved(false);
@@ -195,6 +203,7 @@ export function QuickCapturePage() {
   }
 
   function startAnotherCapture() {
+    setTagNames([]);
     setDraft(createEmptyDraft());
     loadedShareId.current = null;
     setHasSaved(false);
@@ -259,10 +268,24 @@ export function QuickCapturePage() {
 
     setHasSaved(true);
 
+    let tagWarning: string | null = null;
+    // Image captures get their id from the upload operation; notes and links use the draft id.
+    const savedCaptureId =
+      draft.kind === 'image' && imageOperation ? imageOperation.captureId : draft.id;
+    if (tagNames.length) {
+      try {
+        tagLibrary.remember(
+          await applyTags(client, session.user.id, savedCaptureId, tagNames, tagLibrary.tags),
+        );
+      } catch {
+        tagWarning = ' Some tags could not be added; add them from the capture page.';
+      }
+    }
+
     try {
       await clearPendingShare();
       loadedShareId.current = null;
-      setMessage('Capture saved to your inbox.');
+      setMessage(`Capture saved to your inbox.${tagWarning ?? ''}`);
     } catch {
       setError(
         'The capture was saved, but Android could not clear the pending share. Do not save it again.',
@@ -386,6 +409,18 @@ export function QuickCapturePage() {
               />
             </>
           )}
+
+          <div className="composer__tags">
+            <TagEditor
+              applied={tagNames.map((name) => ({ name }))}
+              disabled={isSubmitting}
+              library={tagLibrary.tags}
+              onAdd={(name) => setTagNames((current) => [...current, name])}
+              onRemove={(name) =>
+                setTagNames((current) => current.filter((item) => tagKey(item) !== tagKey(name)))
+              }
+            />
+          </div>
 
           <ActionBar label="Capture actions">
             <button

@@ -1,5 +1,7 @@
 import type { CaptureStatus } from '../capture/captureLifecycle';
 import { captureStatusDetails } from '../capture/captureLifecycle';
+import { TagList } from '../tags/TagList';
+import { tagsFromEmbed } from '../tags/tagNames';
 import { CaptureRow } from './CaptureRow';
 import { captureTitle, displayUrl, domainOf, groupByDay, isUntitledLink } from './listFormat';
 import type { CaptureSummary } from './useCaptureList';
@@ -7,12 +9,19 @@ import type { CaptureSummary } from './useCaptureList';
 type CaptureRiverProps = {
   captures: CaptureSummary[];
   isBusy: boolean;
+  onToggleFavorite: (capture: CaptureSummary) => void;
   status: CaptureStatus;
   thumbnails: Record<string, string>;
 };
 
 /** A status list as an editorial "river": day groups with hairline-separated rows. */
-export function CaptureRiver({ captures, isBusy, status, thumbnails }: CaptureRiverProps) {
+export function CaptureRiver({
+  captures,
+  isBusy,
+  onToggleFavorite,
+  status,
+  thumbnails,
+}: CaptureRiverProps) {
   const details = captureStatusDetails[status];
 
   return (
@@ -43,11 +52,18 @@ export function CaptureRiver({ captures, isBusy, status, thumbnails }: CaptureRi
                   createdAt={capture.created_at}
                   domain={capture.kind === 'link' ? domainOf(capture.source_url) : null}
                   excerpt={excerpt}
+                  favorite={{
+                    isFavorite: Boolean(capture.is_favorite),
+                    onToggle: () => onToggleFavorite(capture),
+                  }}
                   href={`/captures/${capture.id}`}
                   key={capture.id}
                   kind={capture.kind}
                   section={details.path}
                   showThumbnail={isImage}
+                  tags={
+                    <TagList tags={tagsFromEmbed(capture.capture_tags).map((tag) => tag.name)} />
+                  }
                   thumbnailUrl={thumbnailPath ? thumbnails[thumbnailPath] : undefined}
                   title={untitledLink ? displayUrl(title) : title}
                   titleIsUrl={untitledLink}

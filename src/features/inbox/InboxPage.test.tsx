@@ -94,7 +94,7 @@ describe('inbox list', () => {
       '/captures/link-id',
     );
     expect(select).toHaveBeenCalledWith(
-      'id, kind, title, content, source_url, created_at, attachments(storage_path)',
+      'id, kind, title, content, source_url, created_at, is_favorite, attachments(storage_path), capture_tags(tags(id, name))',
     );
     expect(eq).toHaveBeenCalledWith('status', 'inbox');
     expect(order).toHaveBeenCalledWith('created_at', { ascending: false });

@@ -207,7 +207,8 @@ describe('capture detail', () => {
     expect(screen.getByRole('textbox', { name: 'Note' })).toHaveValue(
       'Draft survives tab activation',
     );
-    expect(from).toHaveBeenCalledTimes(1);
+    // The capture is not reloaded (the tag list for autocomplete is a separate table).
+    expect(from.mock.calls.filter(([table]) => table === 'captures')).toHaveLength(1);
   });
 
   it('copies only the opened note content', async () => {
