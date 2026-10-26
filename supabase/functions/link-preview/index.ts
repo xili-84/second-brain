@@ -45,6 +45,20 @@ async function resolveHost(hostname: string): Promise<string[]> {
   return addresses;
 }
 
+/** The project's publishable key (new API keys), else the legacy anon key. Never a secret key. */
+function publishableKey() {
+  try {
+    const keys = JSON.parse(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') ?? '{}') as Record<
+      string,
+      string
+    >;
+    if (keys.default) return keys.default;
+  } catch {
+    // Fall through to the legacy variable.
+  }
+  return Deno.env.get('SUPABASE_ANON_KEY');
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
@@ -54,11 +68,11 @@ Deno.serve(async (request) => {
   if (!token) return json({ error: 'unauthorized' }, 401);
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  if (!supabaseUrl || !anonKey) return json({ error: 'not_configured' }, 500);
+  const apiKey = publishableKey();
+  if (!supabaseUrl || !apiKey) return json({ error: 'not_configured' }, 500);
 
   // A client that acts as the caller: every query below is limited by their RLS policies.
-  const supabase = createClient(supabaseUrl, anonKey, {
+  const supabase = createClient(supabaseUrl, apiKey, {
     auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
