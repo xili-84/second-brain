@@ -318,3 +318,11 @@
   color: var(--ink-3);
   font: var(--text-meta);
 }
+
+@media (prefers-color-scheme: dark) {
+  /* Surfaces are close in dark mode, so the selected segment gets a stronger outline. */
+  .segmented__option--checked {
+    background: var(--bg);
+    box-shadow: 0 0 0 1px var(--field-border);
+  }
+}

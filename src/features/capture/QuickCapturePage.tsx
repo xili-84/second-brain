@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Link2, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
+import { ActionBar } from '../../components/ActionBar';
+import { ImagePicker } from '../../components/ImagePicker';
+import { Notice } from '../../components/Notice';
+import { TopBar } from '../../components/TopBar';
 
 import { useAuth } from '../auth/authContext';
 import { loadPendingSharedImage } from '../share-target/nativeShare';
@@ -11,6 +17,7 @@ import {
   type CaptureDraft,
   type CaptureKind,
 } from './captureDraft';
+import { KindSwitch } from './composer/KindSwitch';
 import {
   createImageOperation,
   discardPendingImage,
@@ -265,123 +272,93 @@ export function QuickCapturePage() {
     }
   }
 
+  const isBusy = isSubmitting || isValidatingImage;
+  const heading = pendingShare ? 'Shared to Second Brain' : 'New capture';
+
   return (
-    <section className="workspace-panel" aria-labelledby="capture-heading">
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">{pendingShare ? 'Android share received' : 'Quick capture'}</p>
-          <h1 id="capture-heading">Capture</h1>
-        </div>
-      </div>
+    <section aria-labelledby="capture-heading" className="page page--actions">
+      <TopBar>
+        <Link aria-label="Close" className="icon-btn" title="Close" to="/inbox">
+          <X aria-hidden="true" className="icon" />
+        </Link>
+        <h1 className="top-bar__title" id="capture-heading">
+          {heading}
+        </h1>
+      </TopBar>
 
       {pendingShare && !hasSaved && (
-        <p className="diagnostic-note">
+        <Notice tone="info">
           Review this shared content before saving. Nothing has been saved yet.
-        </p>
+        </Notice>
       )}
-
-      {(error || shareError) && (
-        <div className="form-message form-message--error" role="alert">
-          {error ?? shareError}
-        </div>
-      )}
-
-      {message && (
-        <div className="form-message form-message--success" role="status">
-          {message}
-        </div>
-      )}
+      {(error || shareError) && <Notice tone="error">{error ?? shareError}</Notice>}
+      {message && <Notice tone="success">{message}</Notice>}
 
       {hasSaved ? (
-        <div className="saved-actions">
-          <button className="primary-button" onClick={startAnotherCapture} type="button">
-            Capture another
-          </button>
-          <Link className="secondary-button" to="/inbox">
-            Open inbox
-          </Link>
+        <div className="saved">
+          <div className="saved__actions">
+            <button
+              className="btn btn--primary btn--lg"
+              onClick={startAnotherCapture}
+              type="button"
+            >
+              Capture another
+            </button>
+            <Link className="btn btn--secondary btn--lg" to="/inbox">
+              Open inbox
+            </Link>
+          </div>
         </div>
       ) : (
-        <form className="form-stack" onSubmit={(event) => void handleSubmit(event)}>
-          <fieldset className="kind-picker">
-            <legend>Capture type</legend>
-            <label>
-              <input
-                checked={draft.kind === 'note'}
-                name="kind"
-                onChange={() => chooseKind('note')}
-                type="radio"
-              />
-              Note
-            </label>
-            <label>
-              <input
-                checked={draft.kind === 'link'}
-                name="kind"
-                onChange={() => chooseKind('link')}
-                type="radio"
-              />
-              Link
-            </label>
-            <label>
-              <input
-                checked={draft.kind === 'image'}
-                name="kind"
-                onChange={() => chooseKind('image')}
-                type="radio"
-              />
-              Image
-            </label>
-          </fieldset>
+        <form className="composer" onSubmit={(event) => void handleSubmit(event)}>
+          <KindSwitch disabled={isSubmitting} onChange={chooseKind} value={draft.kind} />
 
-          <label>
-            Title <span className="optional-label">Optional</span>
-            <input
-              maxLength={500}
-              onChange={(event) => updateDraft({ title: event.target.value })}
-              placeholder={draft.kind === 'link' ? 'A useful reference' : 'Short heading'}
-              value={draft.title}
+          <input
+            aria-label="Title"
+            className="composer__title"
+            disabled={isSubmitting}
+            maxLength={500}
+            onChange={(event) => updateDraft({ title: event.target.value })}
+            placeholder={draft.kind === 'link' ? 'Headline (optional)' : 'Title (optional)'}
+            value={draft.title}
+          />
+
+          {draft.kind === 'note' && (
+            <textarea
+              aria-label="Note"
+              autoFocus={!pendingShare}
+              className="composer__body"
+              disabled={isSubmitting}
+              onChange={(event) => updateDraft({ content: event.target.value })}
+              placeholder="What do you want to remember?"
+              rows={8}
+              value={draft.content}
             />
-          </label>
+          )}
 
-          {draft.kind === 'note' ? (
-            <label>
-              Note
-              <textarea
-                autoFocus={!pendingShare}
-                onChange={(event) => updateDraft({ content: event.target.value })}
-                placeholder="What do you want to remember?"
-                rows={8}
-                value={draft.content}
-              />
-            </label>
-          ) : draft.kind === 'link' ? (
-            <label>
-              URL
-              <input
-                inputMode="url"
-                onChange={(event) => updateDraft({ sourceUrl: event.target.value })}
-                placeholder="https://example.com"
-                required
-                type="url"
-                value={draft.sourceUrl}
-              />
-            </label>
-          ) : (
-            <>
-              <label>
-                Image
+          {draft.kind === 'link' && (
+            <label className="field">
+              <span className="field__label">URL</span>
+              <span className="input-icon">
+                <Link2 aria-hidden="true" className="icon" />
                 <input
-                  accept="image/jpeg,image/png,image/webp"
-                  disabled={isSubmitting || isValidatingImage}
-                  onChange={(event) => void chooseImage(event)}
-                  type="file"
+                  className="input"
+                  disabled={isSubmitting}
+                  inputMode="url"
+                  onChange={(event) => updateDraft({ sourceUrl: event.target.value })}
+                  placeholder="https://example.com"
+                  required
+                  type="url"
+                  value={draft.sourceUrl}
                 />
-                <span className="field-help">JPEG, PNG, or WebP. Maximum size 10 MiB.</span>
-              </label>
+              </span>
+            </label>
+          )}
 
-              {imagePreviewUrl && selectedImage && (
-                <figure className="image-selection">
+          {draft.kind === 'image' && (
+            <>
+              {imagePreviewUrl && selectedImage ? (
+                <figure className="preview">
                   <img
                     alt="Selected upload preview"
                     onError={() => setError('The shared image preview could not be displayed.')}
@@ -391,38 +368,42 @@ export function QuickCapturePage() {
                     {selectedImage.name} · {(selectedImage.size / (1024 * 1024)).toFixed(2)} MiB
                   </figcaption>
                 </figure>
-              )}
-
-              <label>
-                Note <span className="optional-label">Optional</span>
-                <textarea
-                  disabled={isSubmitting}
-                  onChange={(event) => updateDraft({ content: event.target.value })}
-                  placeholder="Why do you want to keep this image?"
-                  rows={5}
-                  value={draft.content}
-                />
-              </label>
+              ) : null}
+              <ImagePicker
+                disabled={isBusy}
+                hint="JPEG, PNG or WebP · up to 10 MiB"
+                label={selectedImage ? 'Choose a different image' : 'Choose an image'}
+                onChange={(event) => void chooseImage(event)}
+              />
+              <textarea
+                aria-label="Note"
+                className="composer__body composer__body--short"
+                disabled={isSubmitting}
+                onChange={(event) => updateDraft({ content: event.target.value })}
+                placeholder="Why keep this image? (optional)"
+                rows={4}
+                value={draft.content}
+              />
             </>
           )}
 
-          <div className="form-actions">
+          <ActionBar label="Capture actions">
             <button
-              className="primary-button"
-              disabled={isSubmitting || isValidatingImage}
-              type="submit"
-            >
-              {isValidatingImage ? 'Checking image…' : isSubmitting ? 'Saving…' : 'Save to inbox'}
-            </button>
-            <button
-              className="secondary-button"
+              className="btn btn--ghost btn--lg"
               disabled={isSubmitting}
               onClick={() => void handleDiscard()}
               type="button"
             >
               Discard
             </button>
-          </div>
+            <button
+              className="btn btn--primary btn--lg action-bar__main"
+              disabled={isBusy}
+              type="submit"
+            >
+              {isValidatingImage ? 'Checking image…' : isSubmitting ? 'Saving…' : 'Save to inbox'}
+            </button>
+          </ActionBar>
         </form>
       )}
     </section>

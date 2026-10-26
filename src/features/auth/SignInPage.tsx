@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
+import { Notice } from '../../components/Notice';
+import { Wordmark } from '../../components/Wordmark';
 import { useAuth } from './authContext';
 
 type RedirectState = {
@@ -21,7 +23,7 @@ export function SignInPage() {
   }
 
   if (session) {
-    return <Navigate replace to="/capture" />;
+    return <Navigate replace to="/inbox" />;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -51,63 +53,69 @@ export function SignInPage() {
     }
 
     const requestedPath = (location.state as RedirectState | null)?.from;
-    navigate(requestedPath?.startsWith('/') ? requestedPath : '/capture', { replace: true });
+    navigate(requestedPath?.startsWith('/') ? requestedPath : '/inbox', { replace: true });
   }
 
   return (
-    <section className="auth-panel" aria-labelledby="sign-in-heading">
-      <p className="eyebrow">Private access</p>
-      <h1 id="sign-in-heading">Sign in</h1>
-      <p>Use the private account created in Supabase.</p>
+    <div className="auth">
+      <section aria-labelledby="sign-in-heading" className="auth__card">
+        <Wordmark large />
+        <hr className="auth__rule" />
+        <h1 className="page-title" id="sign-in-heading">
+          Sign in
+        </h1>
+        <p className="page-sub">Your private notebook for notes, links and images.</p>
 
-      {(error || restorationError) && (
-        <div className="form-message form-message--error" role="alert">
-          {error ?? restorationError}
-        </div>
-      )}
+        {(error || restorationError) && <Notice tone="error">{error ?? restorationError}</Notice>}
 
-      <form className="form-stack" onSubmit={(event) => void handleSubmit(event)}>
-        <label>
-          Email
-          <input
-            autoComplete="email"
-            inputMode="email"
-            onChange={(event) => setEmail(event.target.value)}
-            required
-            type="email"
-            value={email}
-          />
-        </label>
+        <form className="auth__form" onSubmit={(event) => void handleSubmit(event)}>
+          <label className="field">
+            <span className="field__label">Email</span>
+            <input
+              autoComplete="email"
+              className="input"
+              inputMode="email"
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              type="email"
+              value={email}
+            />
+          </label>
 
-        <label>
-          Password
-          <input
-            autoComplete="current-password"
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            type="password"
-            value={password}
-          />
-        </label>
+          <label className="field">
+            <span className="field__label">Password</span>
+            <input
+              autoComplete="current-password"
+              className="input"
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              type="password"
+              value={password}
+            />
+          </label>
 
-        <button
-          aria-busy={isSubmitting}
-          className="primary-button"
-          disabled={isSubmitting}
-          type="submit"
-        >
-          {isSubmitting ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
-    </section>
+          <button
+            aria-busy={isSubmitting}
+            className="btn btn--primary btn--lg btn--block"
+            disabled={isSubmitting}
+            type="submit"
+          >
+            {isSubmitting ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+
+        <p className="auth__foot">Private access · accounts are created by the owner.</p>
+      </section>
+    </div>
   );
 }
 
+/** Shown while the stored session is restored. */
 export function LoadingPanel() {
   return (
-    <section className="message-panel" aria-live="polite">
-      <p className="eyebrow">Private access</p>
-      <h1>Restoring session…</h1>
-    </section>
+    <div aria-live="polite" className="center-state">
+      <Wordmark />
+      <p>Restoring session…</p>
+    </div>
   );
 }

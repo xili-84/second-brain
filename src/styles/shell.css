@@ -348,3 +348,8 @@ body.has-sheet {
     display: none;
   }
 }
+
+/* A titled top bar lets the title take the free space instead of the spacer. */
+.top-bar__title + .top-bar__spacer {
+  display: none;
+}
