@@ -32,12 +32,20 @@ Shared content is never passed through a URL, browser history, or Namecheap acce
 - Capacitor bridge logging is disabled so signed Storage URLs and private image bytes are not
   written to Android logs.
 
+## Security notes
+
+- Only `content://` URIs from other apps are accepted as shared images. `file://` URIs and URIs
+  pointing at this app's own providers are rejected.
+- App data is excluded from cloud backup and Android 12+ device transfer
+  (`res/xml/data_extraction_rules.xml`).
+- The native image chunk size is 192 KiB (a multiple of 3), so base64 chunks are always whole.
+
 ## Build
 
-From the repository root:
+From the repository root (Windows, macOS or Linux):
 
-```powershell
-npm.cmd run android:check
+```bash
+npm run android:check
 ```
 
 This builds the Vite application, copies it into Capacitor, runs Android lint, and assembles:
@@ -46,6 +54,29 @@ This builds the Vite application, copies it into Capacitor, runs Android lint, a
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Capacitor 8 uses JDK 21. Text sharing and private image capture have passed physical Huawei
-acceptance. Physical acceptance for image sharing and **Save to phone** remains pending, so the
-older diagnostic stays under `android-diagnostic/`.
+Capacitor 8 uses JDK 21 and Android SDK 36. Set `ANDROID_HOME` or create `android/local.properties`
+with `sdk.dir=...`.
+
+## Release signing
+
+Android only installs an update over an existing app when both are signed with the **same key**.
+Keep the keystore outside the repository and create `android/keystore.properties` (git-ignored):
+
+```properties
+storeFile=C:/Users/you/keys/second-brain-release.jks
+storePassword=...
+keyAlias=second-brain
+keyPassword=...
+```
+
+or set `SECOND_BRAIN_KEYSTORE_FILE`, `SECOND_BRAIN_KEYSTORE_PASSWORD`, `SECOND_BRAIN_KEY_ALIAS`
+and `SECOND_BRAIN_KEY_PASSWORD`. Then run `npm run android:release`. Increase `versionCode` in
+`app/build.gradle` for every release.
+
+Debug APKs are signed with the debug key of the machine that built them, so a debug APK built on
+another computer cannot replace one built on yours: uninstall first (this signs you out and clears
+pending shares), or build on your own machine.
+
+Text sharing and private image capture have passed physical Huawei acceptance. Physical acceptance
+for image sharing and **Save to phone** is still pending. The retired `android-diagnostic` app is
+archived outside the repository.

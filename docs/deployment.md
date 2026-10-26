@@ -1,7 +1,13 @@
-# Diagnostic deployment to brain.okdaily.net
+# Deployment to brain.okdaily.net
 
-This procedure deploys only the Milestone 1 diagnostic build. It does not apply Supabase migrations
-and does not require any Supabase credentials.
+This procedure deploys the static web build. It does not apply Supabase migrations. The build
+needs `.env.local` (browser-safe values only) so the CSP in `dist/.htaccess` names the Supabase
+project. `scripts/deploy.sh` automates the upload and folder swap below over SFTP or FTPS; see the
+README.
+
+The same layout works on ALL-INKL (Apache with `mod_rewrite` and `mod_headers`). After moving
+hosts, re-check the manifest MIME type, the security headers, the HTTPS redirect and the
+certificate.
 
 ## Production origin
 
@@ -46,6 +52,9 @@ From the repository root on Windows:
 ```powershell
 npm.cmd ci
 npm.cmd run check
+
+# or on macOS/Linux
+npm ci && npm run check
 ```
 
 The final check creates `dist/`. Upload the contents of `dist/`, not the `dist` directory itself.
@@ -62,6 +71,10 @@ workbox-<generated-hash>.js
 assets/
 icons/
 ```
+
+`.htaccess` sets HSTS, a strict Content-Security-Policy, `nosniff`, `Referrer-Policy`,
+`frame-ancestors 'none'`, disables directory listings, marks `index.html`, `sw.js` and the
+manifest `no-cache`, and marks content-hashed assets `immutable`.
 
 Generated hashes may change between builds. Inspect `dist/` rather than copying names from an older
 release.
