@@ -86,6 +86,26 @@ export default defineConfig(({ mode }) => ({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Long-lived vendor chunks keep the app chunk small and cache well across releases.
+        manualChunks(id) {
+          if (id.includes('node_modules/@supabase/')) {
+            return 'supabase';
+          }
+
+          if (
+            /node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id)
+          ) {
+            return 'react';
+          }
+
+          return undefined;
+        },
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
