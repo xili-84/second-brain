@@ -74,13 +74,11 @@ export async function loadPendingSharedImage(
   readChunk: (options: { id: string; offset: number }) => Promise<PendingImageChunk> = (options) =>
     ShareReceiver.readPendingImageChunk(options),
 ) {
-  const encodedParts: string[] = [];
   const parts: Uint8Array[] = [];
   let offset = 0;
 
   while (offset < image.size) {
     const chunk = await readChunk({ id: shareId, offset });
-    encodedParts.push(chunk.data);
     const decoded = atob(chunk.data);
     const bytes = new Uint8Array(decoded.length);
 
@@ -106,6 +104,5 @@ export async function loadPendingSharedImage(
       lastModified: Date.now(),
       type: image.mimeType,
     }),
-    previewUrl: `data:${image.mimeType};base64,${encodedParts.join('')}`,
   };
 }

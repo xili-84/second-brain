@@ -2,6 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { loadPendingSharedImage, type PendingSharedImage } from './nativeShare';
 
+function readText(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+}
+
 describe('native shared image handoff', () => {
   const pendingImage: PendingSharedImage = {
     mimeType: 'image/png',
@@ -23,7 +32,19 @@ describe('native shared image handoff', () => {
     expect(loaded.file.name).toBe('shared-photo.png');
     expect(loaded.file.type).toBe('image/png');
     expect(loaded.file.size).toBe(4);
-    expect(loaded.previewUrl).toBe('data:image/png;base64,cG5nIQ==');
+    expect(await readText(loaded.file)).toBe('png!');
+  });
+
+  it('joins multiple chunks into one file', async () => {
+    const readChunk = vi
+      .fn()
+      .mockResolvedValueOnce({ complete: false, data: btoa('pn'), nextOffset: 2 })
+      .mockResolvedValueOnce({ complete: true, data: btoa('g!'), nextOffset: 4 });
+
+    const loaded = await loadPendingSharedImage('share-id', pendingImage, readChunk);
+
+    expect(readChunk).toHaveBeenNthCalledWith(2, { id: 'share-id', offset: 2 });
+    expect(await readText(loaded.file)).toBe('png!');
   });
 
   it('rejects an incomplete temporary image', async () => {

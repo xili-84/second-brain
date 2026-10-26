@@ -21,6 +21,10 @@ import {
   type ImageOperation,
 } from './imageCapture';
 
+function createPreviewUrl(file: File) {
+  return typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : null;
+}
+
 export function QuickCapturePage() {
   const { client, session } = useAuth();
   const { clearPendingShare, error: shareError, pendingShare } = usePendingShare();
@@ -33,7 +37,6 @@ export function QuickCapturePage() {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imageOperation, setImageOperation] = useState<ImageOperation | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const [sharedImagePreviewUrl, setSharedImagePreviewUrl] = useState<string | null>(null);
   const [isValidatingImage, setIsValidatingImage] = useState(false);
 
   useEffect(() => {
@@ -48,7 +51,6 @@ export function QuickCapturePage() {
     setHasSaved(false);
     setSelectedImage(null);
     setImageOperation(null);
-    setSharedImagePreviewUrl(null);
     setIsValidatingImage(false);
 
     if (pendingShare.kind === 'text') {
@@ -78,7 +80,7 @@ export function QuickCapturePage() {
     setIsValidatingImage(true);
 
     void loadPendingSharedImage(pendingShare.id, pendingShare.image)
-      .then(({ file, previewUrl }) => {
+      .then(({ file }) => {
         if (!isActive) {
           return;
         }
@@ -91,7 +93,6 @@ export function QuickCapturePage() {
           return;
         }
 
-        setSharedImagePreviewUrl(previewUrl);
         setSelectedImage(file);
         setImageOperation(createImageOperation(userId, file.type));
       })
@@ -108,34 +109,16 @@ export function QuickCapturePage() {
   }, [pendingShare, session?.user.id]);
 
   useEffect(() => {
-    if (!selectedImage) {
-      setImagePreviewUrl(null);
-      return;
-    }
-
-    if (sharedImagePreviewUrl) {
-      setImagePreviewUrl(sharedImagePreviewUrl);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setImagePreviewUrl(reader.result);
-      }
-    };
-    reader.onerror = () => {
-      setImagePreviewUrl(null);
-      setError('The image preview could not be displayed.');
-    };
-    reader.readAsDataURL(selectedImage);
+    // An object URL references the File directly instead of copying it into a large data: string.
+    const previewUrl = selectedImage ? createPreviewUrl(selectedImage) : null;
+    setImagePreviewUrl(previewUrl);
 
     return () => {
-      if (reader.readyState === FileReader.LOADING) {
-        reader.abort();
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
       }
     };
-  }, [selectedImage, sharedImagePreviewUrl]);
+  }, [selectedImage]);
 
   function updateDraft(update: Partial<CaptureDraft>) {
     setDraft((current) => ({ ...current, ...update }));
@@ -149,7 +132,6 @@ export function QuickCapturePage() {
     if (kind !== 'image') {
       setSelectedImage(null);
       setImageOperation(null);
-      setSharedImagePreviewUrl(null);
     }
   }
 
@@ -157,12 +139,10 @@ export function QuickCapturePage() {
     const file = event.target.files?.[0] ?? null;
     setMessage(null);
     setError(null);
-    setSharedImagePreviewUrl(null);
 
     if (!file) {
       setSelectedImage(null);
       setImageOperation(null);
-      setSharedImagePreviewUrl(null);
       return;
     }
 
@@ -173,7 +153,6 @@ export function QuickCapturePage() {
     if (validationError || !session || !isSupportedImageMime(file.type)) {
       setSelectedImage(null);
       setImageOperation(null);
-      setSharedImagePreviewUrl(null);
       event.target.value = '';
       setError(validationError ?? 'The image could not be prepared.');
       return;
@@ -202,7 +181,6 @@ export function QuickCapturePage() {
       setHasSaved(false);
       setSelectedImage(null);
       setImageOperation(null);
-      setSharedImagePreviewUrl(null);
       setMessage('Draft discarded. Nothing was saved.');
     } catch {
       setError('The Android share could not be discarded. Please try again.');
@@ -217,7 +195,6 @@ export function QuickCapturePage() {
     setError(null);
     setSelectedImage(null);
     setImageOperation(null);
-    setSharedImagePreviewUrl(null);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
