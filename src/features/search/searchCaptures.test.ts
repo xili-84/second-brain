@@ -19,6 +19,9 @@ const row = {
   title: 'Invoice',
 };
 
+// Rows from an older search_captures (or the fallback without embeds) have no tags/favorite.
+const result = { ...row, is_favorite: false, tags: [] };
+
 function createClient({
   rpcResult,
   tableResult = { data: [row], error: null },
@@ -74,13 +77,52 @@ describe('searchCaptures', () => {
 
     await expect(searchCaptures(typed, '  invoice  paid ')).resolves.toEqual({
       mode: 'fulltext',
-      results: [row],
+      results: [result],
     });
     expect(client.rpc).toHaveBeenCalledWith('search_captures', {
       p_limit: 50,
       p_query: 'invoice paid',
     });
     expect(client.from).not.toHaveBeenCalled();
+  });
+
+  it('passes through tags and the favorite flag from the database function', async () => {
+    const { typed } = createClient({
+      rpcResult: {
+        data: [{ ...row, is_favorite: true, rank: 0.2, tags: ['Finance', 'March'] }],
+        error: null,
+      },
+    });
+
+    await expect(searchCaptures(typed, 'march')).resolves.toEqual({
+      mode: 'fulltext',
+      results: [{ ...row, is_favorite: true, tags: ['Finance', 'March'] }],
+    });
+  });
+
+  it('reads tags from the embedded join in the fallback search', async () => {
+    const { typed } = createClient({
+      rpcResult: {
+        data: null,
+        error: { code: 'PGRST202', message: 'Could not find the function' },
+      },
+      tableResult: {
+        data: [
+          {
+            ...row,
+            capture_tags: [
+              { tags: { id: 't2', name: 'march' } },
+              { tags: { id: 't1', name: 'Bills' } },
+            ],
+            is_favorite: true,
+          },
+        ],
+        error: null,
+      },
+    });
+
+    const response = await searchCaptures(typed, 'invoice');
+    expect(response.results[0]).toEqual({ ...row, is_favorite: true, tags: ['Bills', 'march'] });
   });
 
   it('does not query anything for a blank search', async () => {
@@ -100,9 +142,12 @@ describe('searchCaptures', () => {
 
     await expect(searchCaptures(typed, 'invoice paid')).resolves.toEqual({
       mode: 'substring',
-      results: [row],
+      results: [result],
     });
     expect(client.from).toHaveBeenCalledWith('captures');
+    expect(builder.select).toHaveBeenCalledWith(
+      'id, kind, status, title, content, source_url, created_at, is_favorite, capture_tags(tags(id, name))',
+    );
     expect(builder.or).toHaveBeenNthCalledWith(1, buildSubstringFilter('invoice'));
     expect(builder.or).toHaveBeenNthCalledWith(2, buildSubstringFilter('paid'));
     expect(builder.order).toHaveBeenCalledWith('created_at', { ascending: false });

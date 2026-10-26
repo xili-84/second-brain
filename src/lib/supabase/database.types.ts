@@ -178,10 +178,12 @@ export type Database = {
           content: string | null;
           created_at: string;
           id: string;
+          is_favorite: boolean;
           kind: string;
           rank: number;
           source_url: string | null;
           status: string;
+          tags: string[];
           title: string | null;
         }[];
       };

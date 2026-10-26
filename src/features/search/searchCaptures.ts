@@ -1,5 +1,6 @@
 import type { CaptureStatus } from '../capture/captureLifecycle';
 import type { SecondBrainClient } from '../../lib/supabase/client';
+import { tagsFromEmbed, type EmbeddedCaptureTags } from '../tags/tagNames';
 
 export const SEARCH_RESULT_LIMIT = 50;
 const MAX_TERMS = 8;
@@ -9,9 +10,12 @@ export type CaptureSearchResult = {
   content: string | null;
   created_at: string;
   id: string;
+  is_favorite: boolean;
   kind: string;
   source_url: string | null;
   status: CaptureStatus;
+  /** Tag names, sorted. */
+  tags: string[];
   title: string | null;
 };
 
@@ -67,16 +71,30 @@ function isMissingFunctionError(error: { code?: string; message?: string }) {
   );
 }
 
-type CaptureSearchRow = Omit<CaptureSearchResult, 'status'> & { status: string };
+type CaptureSearchRow = {
+  capture_tags?: EmbeddedCaptureTags;
+  content: string | null;
+  created_at: string;
+  id: string;
+  is_favorite?: boolean | null;
+  kind: string;
+  source_url: string | null;
+  status: string;
+  tags?: string[] | null;
+  title: string | null;
+};
 
 function toSearchResult(row: CaptureSearchRow): CaptureSearchResult {
   return {
     content: row.content,
     created_at: row.created_at,
     id: row.id,
+    // Older deployments of search_captures return neither column; treat that as "none".
+    is_favorite: row.is_favorite ?? false,
     kind: row.kind,
     source_url: row.source_url,
     status: row.status as CaptureStatus,
+    tags: row.tags ?? tagsFromEmbed(row.capture_tags).map((tag) => tag.name),
     title: row.title,
   };
 }
@@ -120,7 +138,9 @@ export async function searchCaptures(
 
   let request = client
     .from('captures')
-    .select('id, kind, status, title, content, source_url, created_at');
+    .select(
+      'id, kind, status, title, content, source_url, created_at, is_favorite, capture_tags(tags(id, name))',
+    );
 
   // Chained .or() filters are ANDed, so every term has to appear somewhere in the capture.
   for (const term of terms) {
