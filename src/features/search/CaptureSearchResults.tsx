@@ -18,7 +18,9 @@ function SearchResultRow({ result, terms }: { result: CaptureSearchResult; terms
   const details = captureStatusDetails[result.status];
   const statusLabel = details?.label ?? result.status;
   // Image notes stay private in lists, so only say that the match is there.
-  const snippet = result.kind === 'image' ? '' : makeSnippet(result.content, terms);
+  const contentSnippet = result.kind === 'image' ? '' : makeSnippet(result.content, terms);
+  const descriptionSnippet =
+    result.kind === 'link' ? makeSnippet(result.link_description, terms) : '';
   const imageNoteMatch =
     result.kind === 'image' && !hasMatch(result.title, terms) && hasMatch(result.content, terms);
   // A titled link shows its URL under the title when the URL is what matched.
@@ -27,13 +29,19 @@ function SearchResultRow({ result, terms }: { result: CaptureSearchResult; terms
       ? hasMatch(result.source_url, terms)
       : false;
 
-  const excerpt = snippet ? (
-    <HighlightedText terms={terms} text={snippet} />
-  ) : imageNoteMatch ? (
-    'Matches the image note.'
-  ) : urlMatch && result.source_url ? (
-    <HighlightedText terms={terms} text={displayUrl(result.source_url)} />
-  ) : null;
+  // Show whichever text explains the match: the note, the page description, then the URL.
+  const excerpt =
+    contentSnippet && hasMatch(result.content, terms) ? (
+      <HighlightedText terms={terms} text={contentSnippet} />
+    ) : descriptionSnippet && hasMatch(result.link_description, terms) ? (
+      <HighlightedText terms={terms} text={descriptionSnippet} />
+    ) : imageNoteMatch ? (
+      'Matches the image note.'
+    ) : urlMatch && result.source_url ? (
+      <HighlightedText terms={terms} text={displayUrl(result.source_url)} />
+    ) : contentSnippet || descriptionSnippet ? (
+      <HighlightedText terms={terms} text={contentSnippet || descriptionSnippet} />
+    ) : null;
 
   return (
     <CaptureRow

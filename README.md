@@ -109,9 +109,14 @@ CLI (`supabase db push`) after review. Never edit an applied migration; add a ne
 `supabase/config.toml` mirrors production auth settings: sign-up disabled, minimum password
 length 12.
 
-Pending (written, not yet applied): `202610260003_link_previews.sql` (link preview columns on
-`captures` and the private `link-previews` bucket). Until it is applied the app does not request
-the preview columns and links keep their plain row and card.
+Applied: `202610260003_link_previews.sql` (link preview columns on `captures` and the private
+`link-previews` bucket). Without it the app does not request the preview columns and links keep
+their plain row and card.
+
+Pending (written, not yet applied): `202610260004_search_link_previews.sql` makes
+`search_captures` also match link preview titles and descriptions (same security: authenticated
+callers only, own rows only). Until it is applied, full-text search simply does not look at page
+titles; the substring fallback already includes them when the preview columns exist.
 
 ## Link previews
 

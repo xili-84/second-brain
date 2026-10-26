@@ -219,4 +219,31 @@ describe('capture search', () => {
     expect(screen.getByText(/<img src=x onerror=alert\(1\)>/u)).toBeVisible();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
+
+  it('shows a link by its page title and explains a match in the page description', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: [
+        result({
+          id: 'link-1',
+          kind: 'link',
+          link_description: 'Everything about the quarterly budget review.',
+          link_title: 'Finance weekly',
+          source_url: 'https://news.example.com/a/123',
+        }),
+      ],
+      error: null,
+    });
+    renderInbox(rpc, '/inbox?q=budget');
+
+    const link = await screen.findByRole('link', { name: 'Open Finance weekly (Inbox)' });
+    expect(link).toHaveTextContent('Everything about the quarterly budget review.');
+    expect(within(link).getByText('budget', { selector: 'mark' })).toBeVisible();
+  });
+
+  it('says that page titles are searched when nothing matches', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: [], error: null });
+    renderInbox(rpc, '/inbox?q=zebra');
+
+    expect(await screen.findByText(/page titles/u)).toBeVisible();
+  });
 });

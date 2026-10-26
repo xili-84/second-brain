@@ -201,6 +201,8 @@ export type Database = {
           id: string;
           is_favorite: boolean;
           kind: string;
+          link_description: string | null;
+          link_title: string | null;
           rank: number;
           source_url: string | null;
           status: string;
