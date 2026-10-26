@@ -36,6 +36,16 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+  edge:
+    name: Edge Function type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno check supabase/functions/link-preview/index.ts
+
   android:
     name: Android debug build
     runs-on: ubuntu-latest

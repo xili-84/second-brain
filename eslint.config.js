@@ -25,6 +25,16 @@ export default tseslint.config(
     },
   },
   {
+    // Edge Function helpers (the Deno entry point, index.ts, is checked with `deno check`).
+    files: ['supabase/functions/**/*.ts'],
+    ignores: ['supabase/functions/**/index.ts'],
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 2023,
+      globals: globals.browser,
+    },
+  },
+  {
     files: ['*.config.{js,ts}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     languageOptions: {

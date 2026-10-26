@@ -3,6 +3,7 @@ android/.gradle/
 android/**/build/
 coverage/
 dist/
+dist-edge/
 node_modules/
 android/capacitor-cordova-android-plugins/
 deploy-backups/
