@@ -109,6 +109,12 @@ CLI (`supabase db push`) after review. Never edit an applied migration; add a ne
 `supabase/config.toml` mirrors production auth settings: sign-up disabled, minimum password
 length 12.
 
+Pending (written, not yet applied): `202610260001_search_captures.sql` (full-text search) and
+`202610260002_search_tags_and_favorites.sql` (search also matches tags and returns tags and the
+favorite flag). Apply both in one `supabase db push`. Until then the app falls back to substring
+search, and tags, favorites and filters work regardless, because the `tags`, `capture_tags` and
+`captures.is_favorite` schema has existed since the initial migration.
+
 ## Design system
 
 The "Editorial" look: white paper and black ink (dark mode follows the system), one newsroom red
@@ -123,6 +129,7 @@ src/styles/shell.css       masthead, tab bar, top bar, sheets
 src/styles/list.css        capture rows, day groups, search field and results
 src/styles/article.css     capture detail and the pinned action bar
 src/styles/forms.css       composer, kind switch, fields, image picker, sign-in
+src/styles/tags.css        tag editor, tag lists, favorite star, filter row
 ```
 
 Rules of thumb: use tokens, never raw colours; no inline `style` (the CSP is `style-src 'self'`);
@@ -153,6 +160,7 @@ src/features/auth/       session restore, sign-in, protected routes
 src/features/capture/    quick capture, detail/edit, image upload, replacement, cleanup
 src/features/inbox/      Inbox / Reviewed / Archived lists, thumbnails
 src/features/search/     search field and results
+src/features/tags/       tags, favorites and list filters
 src/features/share-target/  Android share handoff (Capacitor plugin bridge)
 src/lib/                 Supabase client, environment validation, generated DB types
 src/styles/              design tokens and stylesheets (see Design system)
