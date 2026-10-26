@@ -165,6 +165,56 @@ for (const c of captures) {
     : [];
 }
 
+// Link previews, as the link-preview Edge Function would store them.
+const FAVICONS = {
+  politico:
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABKUlEQVR4nGM8IaD3n2EAAdNAWj7qgFEHjDqAgYGBgYVYhWZvzjMwMmN3778fPxl+v37H8PXCNYa3q7cyvNu8l2gHMBJbEOFzADr4sOcIw+3YIoZ/P34SVEt2FFwyC2A4KajPcFrClOF6QBrDr2cv4XICLjYMci3FRJlDcRr49/MXw6eDJxke1faiiItGBzAwcbDT3gEw8PnEBVSDOdgZ2BVl6ecABkZGTLH/hJMX1RzAa26Awv/34yfDzwdPCOojOhviAkzsbAw8FoYMcs1FKOKvl24gKheQ7QC9Uxtwyn3Ye5ThUW0fUeZQHAIMDJCc8Of1W4avF64zvFm9leHdpj1E6yXbAZfMAhi+375PrnY4GPC6YNQBow4gujqmFRjwEBh1wKgDRh0AAAB7WNUuSXGoAAAAAElFTkSuQmCC',
+  android:
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABqElEQVR4nO2Wv0/CQBTHv/UHmEAAJSSQCIkmKKziygpODjq5GRMn/w3/C6O7g4NRdFDRuDkQTVQMhUVBiXGgFFqlhdYBc1BsaBtKWHpL37v33r1Pvu1dj4oXdmWMcIyNsrkFYAFYAAAwYbRAKDKg1/b/zYcPN2Gf9xoGMKxAJfVsaN5cABlgzrKqIeb8BbJk/FA1BMBlihDLLPEp2zixm191cHevwwXoldm/E+8bNxVA+hbBpmniT/pd8G7EYAt6yFztpoBWvTEcADadh8SLxHcnFgEKcCciHchGE+wlrVY+OECvvJ6VaPuZjPTNMwVA/KyByxSJb5+bwVTY92d7iQ0A/MM7hBJjLgCTygJdW8yTjCri3a+B5OsclJ4bUX79AI23iu5FbQEXFo63AUo7V1MB/vHDUHMAEMosuPuSrlzNfwFzqvyowkdbsIemVZvSq3uKOsfSrCZAXwVkoYXqRa5D63OqNgfastsCLuJXr3KQfkTVXN0A7G0BrVrnYHHGgn0XcyyHiC3xItjrwmAAvfI7NAGUcebkSRNA1y4Y5hj5jcgCsAAsgF+8X5eXdG7RagAAAABJRU5ErkJggg==',
+  verge:
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAB20lEQVR4nO2XTUsCURSG39GUshCzb4U+qBCKyMgQNKKCNhFl65D2rfsDQYuW/YJ2LbMWYUW7VBCtVoFFiyIc02oqikbTRltIt2a0aUzDRXM2w3vOuXeeOXPPnTvUXIc7gzKaopw3lwFkABkAACrEgotrFphHG4heXw5hZ+3y2/wJZxvml3qIPvExWHEGRAFEK+DZoHnaPmsUnczuMAjGh0XzfwQ43o+BfUoR3d6rhbG7Jm9uU6sGXQM6ohMsh+BerDiAVDIN/3aU5xM+JfHP8v0B9zWSca44AADwuPhltE0bQFG5ebYZYfnp3KTfAJwfPyJ68UJ0vbEKpiE9L6fTrENzezXRt+E4TgP3pQEAAI9LsBgFr2FYoL0uGhmJ31hJAN7NCG9C62QzVOrsUKWSgnWqJQdAqkkCYCJxhPwM0RqtCuax7P7QN1IPrV5NYmeHD4hdsaUFAIAD4Z7gMPKuHyZ18RUMENyNIsF+tpV5vAF1hioMTjQSXzLBIeC+/huAV5ZDcOdzT6hQKbCw2g91pZL4jvZvwD6//Q0AkNsNJkstPy5h6y0KIORncEfH88YeYq848TF5YyUDyGSyLZnPfFs00lzhB+yCzwPflbmQ3v9qlPxfIAPIAP8e4B2BwphCGhmLLQAAAABJRU5ErkJggg==',
+  rsms: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAASElEQVR4nO3XsQ0AIAwDwYQNMkT2HyySV4COBUCk4C259rX2iJjWmNE5DgAAgCNAVZmk3cx8C7gVAAAAAAAAAIDzCwAA+B6wAP3mDjE+0/ylAAAAAElFTkSuQmCC',
+};
+const previews: Record<number, Row> = {
+  1: {
+    link_title: 'EU AI Act: what changes for publishers in 2027',
+    link_description:
+      'From training-data disclosures to labelling rules, a guide to the obligations that land on newsrooms and what to prepare now.',
+    link_site_name: 'POLITICO',
+    link_favicon: FAVICONS.politico,
+  },
+  4: {
+    link_title: 'Splash screens',
+    link_description:
+      'Starting in Android 12, the SplashScreen API lets apps launch with animation, including an into-app motion at launch.',
+    link_site_name: 'Android Developers',
+    link_favicon: FAVICONS.android,
+  },
+  7: {
+    link_title: 'The Verge has a new look',
+    link_description: 'Introducing a homepage built around a feed of everything we do.',
+    link_site_name: 'The Verge',
+    link_favicon: FAVICONS.verge,
+  },
+  10: {
+    link_title: 'Inter font family',
+    link_description: 'Inter is a typeface carefully crafted & designed for computer screens.',
+    link_site_name: null,
+    link_favicon: FAVICONS.rsms,
+  },
+};
+for (const [index, preview] of Object.entries(previews)) {
+  const capture = captures.find(
+    (c) => c.id === `c0000000-0000-4000-8000-${index.padStart(12, '0')}`,
+  );
+  if (capture) {
+    Object.assign(capture, preview, {
+      link_image_path: `${USER_ID}/${String(capture.id)}/preview`,
+      link_preview_status: 'ready',
+    });
+  }
+}
+
 // Tags and favorites.
 const tags: Row[] = ['okdaily', 'Ideas', 'Design', 'Admin', 'Reels'].map((name, index) => ({
   id: `t0000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
@@ -194,6 +244,12 @@ const tagsOf = (captureId: unknown) =>
     .filter((link) => link.capture_id === captureId)
     .map((link) => tags.find((tag) => tag.id === link.tag_id))
     .filter(Boolean) as Row[];
+
+/** Link previews live at <user>/<capture>/preview; their mock files are named after the capture. */
+const mockImageUrl = (bucket: string, path: string) =>
+  bucket === 'link-previews'
+    ? `/mock-images/link-${path.split('/')[1]}.jpg`
+    : `/mock-images/${path.split('/').pop()}`;
 
 const delay = <T>(value: T, isData = false) =>
   new Promise<T>((resolve) =>
@@ -379,15 +435,23 @@ export function createMockClient(): SecondBrainClient {
         true,
       );
     },
+    functions: {
+      invoke: (_name: string, options: { body?: { captureId?: string } } = {}) => {
+        const capture = captures.find((c) => c.id === options.body?.captureId);
+        return capture?.link_image_path
+          ? delay({ data: { preview: capture }, error: null })
+          : delay({ data: null, error: { context: { status: 422 }, message: 'mock: no preview' } });
+      },
+    },
     storage: {
-      from: () => ({
+      from: (bucket: string) => ({
         createSignedUrl: (path: string) =>
-          delay({ data: { signedUrl: `/mock-images/${path.split('/').pop()}` }, error: null }),
+          delay({ data: { signedUrl: mockImageUrl(bucket, path) }, error: null }),
         createSignedUrls: (paths: string[]) =>
           delay({
             data: paths.map((path) => ({
               path,
-              signedUrl: `/mock-images/${path.split('/').pop()}`,
+              signedUrl: mockImageUrl(bucket, path),
               error: null,
             })),
             error: null,

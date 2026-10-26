@@ -109,15 +109,39 @@ CLI (`supabase db push`) after review. Never edit an applied migration; add a ne
 `supabase/config.toml` mirrors production auth settings: sign-up disabled, minimum password
 length 12.
 
-Pending (written, not yet applied): `202610260001_search_captures.sql` (full-text search) and
-`202610260002_search_tags_and_favorites.sql` (search also matches tags and returns tags and the
-favorite flag). Apply both in one `supabase db push`. Until then the app falls back to substring
-search, and tags, favorites and filters work regardless, because the `tags`, `capture_tags` and
-`captures.is_favorite` schema has existed since the initial migration.
+Pending (written, not yet applied): `202610260003_link_previews.sql` (link preview columns on
+`captures` and the private `link-previews` bucket). Until it is applied the app does not request
+the preview columns and links keep their plain row and card.
+
+## Link previews
+
+When a link is saved (and when **Refresh preview** is pressed on its page) the app calls the
+`link-preview` Edge Function (`supabase/functions/link-preview/`). The function checks the caller
+with Supabase Auth and then works only through their RLS (no service-role key). It fetches the page
+through an SSRF guard (`ssrf.ts`): http/https on web ports only, no credentials in the URL, every
+DNS answer must be a public address (private, loopback, link-local, CGNAT, multicast, reserved and
+IPv4-mapped/NAT64/6to4 forms are refused) on every hop, at most 3 redirects, a 5 s deadline, 1 MB
+of HTML, HTML content types only, no cookies. Metadata is parsed into capped plain text
+(`parse.ts`). The `og:image` must decode as JPEG/PNG/WebP/GIF (magic bytes, 2 MB cap) and is stored
+privately at `link-previews/<user>/<capture>/preview`; the app shows it through signed URLs from
+the Supabase origin, so the CSP did not need any new image hosts. Favicons (16 KB cap, raster
+only) are stored as a data URL. Any failure leaves the plain link.
+
+Known limit: the edge runtime cannot pin the checked address for the connection, so a DNS
+rebinding attacker with a very short TTL could, in theory, race the check. The function only
+returns parsed text and a verified image, never the raw response.
+
+Deploy (CLI): `supabase functions deploy link-preview` (reads `supabase/config.toml`, where
+`verify_jwt = false` because the function verifies tokens itself). Without the CLI,
+`npm run edge:bundle` writes a single file to paste into the dashboard editor. `npm run
+check:edge` type-checks the function with Deno (also run in CI).
 
 ## Design system
 
-The "Editorial" look: white paper and black ink (dark mode follows the system), one newsroom red
+The "Editorial" look: white paper and black ink (dark mode follows the system unless the user
+picks Light or Dark under Account → Appearance; `public/theme-init.js` applies that choice before
+first paint and `src/app/theme.ts` keeps the theme-color meta and Android system bars in step), one
+newsroom red
 accent, Inter (bundled via `@fontsource-variable/inter`, so it works offline), heavy rules for
 structure and hairlines between items, Lucide icons.
 
@@ -130,6 +154,7 @@ src/styles/list.css        capture rows, day groups, search field and results
 src/styles/article.css     capture detail and the pinned action bar
 src/styles/forms.css       composer, kind switch, fields, image picker, sign-in
 src/styles/tags.css        tag editor, tag lists, favorite star, filter row
+src/styles/previews.css    link preview card and list favicons
 ```
 
 Rules of thumb: use tokens, never raw colours; no inline `style` (the CSP is `style-src 'self'`);
@@ -161,12 +186,13 @@ src/features/capture/    quick capture, detail/edit, image upload, replacement, 
 src/features/inbox/      Inbox / Reviewed / Archived lists, thumbnails
 src/features/search/     search field and results
 src/features/tags/       tags, favorites and list filters
+src/features/linkPreview/  link preview requests, detail card, list thumbnails
 src/features/share-target/  Android share handoff (Capacitor plugin bridge)
 src/lib/                 Supabase client, environment validation, generated DB types
 src/styles/              design tokens and stylesheets (see Design system)
 public/.htaccess         HTTPS, SPA routing, security headers, caching
 android/                 Capacitor Android project
-supabase/                config and migrations
+supabase/                config, migrations and the link-preview Edge Function
 scripts/                 deploy and cross-platform Gradle helpers
 docs/                    architecture, deployment and milestone records
 ```
