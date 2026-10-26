@@ -76,15 +76,23 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
 
       {error && (
         <div className="form-message form-message--error" role="alert">
-          {error}
+          <span>{error}</span>{' '}
+          <button className="text-button" onClick={() => void loadCaptures()} type="button">
+            Try again
+          </button>
         </div>
       )}
 
       <div className="inbox-toolbar">
-        <span>
+        <span aria-live="polite">
           {isLoading ? 'Loading…' : `${captures.length} capture${captures.length === 1 ? '' : 's'}`}
         </span>
-        <button className="text-button" disabled={isLoading} onClick={() => void loadCaptures()}>
+        <button
+          className="text-button"
+          disabled={isLoading}
+          onClick={() => void loadCaptures()}
+          type="button"
+        >
           Refresh
         </button>
       </div>
@@ -100,7 +108,7 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
         </div>
       )}
 
-      <ol className="capture-list">
+      <ol aria-busy={isLoading} aria-label={details.label} className="capture-list">
         {captures.map((capture) => {
           const cardTitle =
             capture.title?.trim() ||

@@ -32,4 +32,17 @@ describe('application shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     expect(onSignOut).toHaveBeenCalledTimes(1);
   });
+
+  it('offers a skip link and names the page in the document title', async () => {
+    window.history.pushState({}, '', '/login');
+
+    render(<App client={createFakeSupabaseClient()} />);
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveAttribute(
+      'href',
+      '#main-content',
+    );
+    expect(document.title).toBe('Sign in · Second Brain');
+  });
 });

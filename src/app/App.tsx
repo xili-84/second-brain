@@ -41,6 +41,24 @@ function useOnlineStatus() {
   return isOnline;
 }
 
+const routeTitles: Record<string, string> = {
+  '/archived': 'Archived',
+  '/capture': 'Capture',
+  '/inbox': 'Inbox',
+  '/login': 'Sign in',
+  '/reviewed': 'Reviewed',
+  '/share': 'Share',
+};
+
+function useDocumentTitle() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    const section = pathname.startsWith('/captures/') ? 'Capture detail' : routeTitles[pathname];
+    document.title = section ? `${section} · Second Brain` : 'Second Brain';
+  }, [pathname]);
+}
+
 function Shell() {
   const { client, isRestoring, session } = useAuth();
   const userId = session?.user.id;
@@ -48,6 +66,8 @@ function Shell() {
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [isPwaUpdateAvailable, setIsPwaUpdateAvailable] = useState(false);
   const [isUpdatingPwa, setIsUpdatingPwa] = useState(false);
+
+  useDocumentTitle();
 
   useEffect(() => subscribeToPwaUpdates(setIsPwaUpdateAvailable), []);
 
@@ -82,6 +102,9 @@ function Shell() {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
       {!isOnline && (
         <div className="network-banner" role="alert">
           You are offline. Saving and loading captures requires an internet connection.
@@ -121,7 +144,7 @@ function Shell() {
         {!isRestoring && session && <PrimaryNavigation onSignOut={() => void handleSignOut()} />}
       </header>
 
-      <main>
+      <main id="main-content" tabIndex={-1}>
         <Routes>
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/login" element={<SignInPage />} />

@@ -29,13 +29,23 @@ export function SignInPage() {
     setError(null);
     setIsSubmitting(true);
 
-    const { error: signInError } = await client.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    let signInError: unknown = null;
+
+    try {
+      ({ error: signInError } = await client.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      }));
+    } catch (caught) {
+      signInError = caught;
+    }
 
     if (signInError) {
-      setError('Sign-in failed. Check your email and password, then try again.');
+      setError(
+        navigator.onLine
+          ? 'Sign-in failed. Check your email and password, then try again.'
+          : 'You appear to be offline. Connect to the internet and try again.',
+      );
       setIsSubmitting(false);
       return;
     }
@@ -80,7 +90,12 @@ export function SignInPage() {
           />
         </label>
 
-        <button className="primary-button" disabled={isSubmitting} type="submit">
+        <button
+          aria-busy={isSubmitting}
+          className="primary-button"
+          disabled={isSubmitting}
+          type="submit"
+        >
           {isSubmitting ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
