@@ -91,7 +91,7 @@ The Android project lives in [`android/`](android/README.md).
 
 ```bash
 npm run android:check     # build web, cap sync, lint, assemble debug APK
-npm run android:release   # signed release APK + AAB (needs android/keystore.properties)
+npm run android:release   # signed release APK + AAB (needs the release key, see android/README.md)
 ```
 
 The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.

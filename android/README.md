@@ -59,23 +59,54 @@ with `sdk.dir=...`.
 
 ## Release signing
 
-Android only installs an update over an existing app when both are signed with the **same key**.
-Keep the keystore outside the repository and create `android/keystore.properties` (git-ignored):
+Release builds are signed with the Second Brain release key:
+
+| Item                 | Value                                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------- |
+| Keystore             | PKCS12, alias `brain-release`, RSA 4096, valid until 2059                                         |
+| Certificate SHA-256  | `E9:E4:41:8C:E6:1D:37:43:12:7E:91:35:EF:70:EC:4B:A4:7A:71:2E:8B:5F:41:35:86:1F:2B:21:8E:E2:0C:2A` |
+| First signed release | 1.1.1 (versionCode 3)                                                                             |
+
+Android only installs an update over an existing app when both are signed with the **same key**,
+so every release must use this key. If it is lost, updates can no longer install over the app.
+Keep the backup (`brain-release-key-backup.zip`: keystore, `keystore.properties`, restore notes) in
+a password manager or encrypted storage plus one offline copy.
+
+The keystore and its passwords live **outside the repository**. `app/build.gradle` reads them from
+`android/keystore.properties` (git-ignored; it may be a copy or a symlink to the real file):
 
 ```properties
-storeFile=C:/Users/you/keys/second-brain-release.jks
+storeFile=/absolute/path/to/brain-release.jks
 storePassword=...
-keyAlias=second-brain
+keyAlias=brain-release
 keyPassword=...
 ```
 
-or set `SECOND_BRAIN_KEYSTORE_FILE`, `SECOND_BRAIN_KEYSTORE_PASSWORD`, `SECOND_BRAIN_KEY_ALIAS`
-and `SECOND_BRAIN_KEY_PASSWORD`. Then run `npm run android:release`. Increase `versionCode` in
-`app/build.gradle` for every release.
+or from the environment variables `SECOND_BRAIN_KEYSTORE_FILE`,
+`SECOND_BRAIN_KEYSTORE_PASSWORD`, `SECOND_BRAIN_KEY_ALIAS` and `SECOND_BRAIN_KEY_PASSWORD`.
+For PKCS12 keystores the store and key passwords are the same. Without either source, release
+builds are produced unsigned.
 
-Debug APKs are signed with the debug key of the machine that built them, so a debug APK built on
-another computer cannot replace one built on yours: uninstall first (this signs you out and clears
-pending shares), or build on your own machine.
+Build and verify:
+
+```bash
+npm run android:release      # app/build/outputs/apk/release/app-release.apk and bundle/release/app-release.aab
+apksigner verify --print-certs android/app/build/outputs/apk/release/app-release.apk
+```
+
+The printed `certificate SHA-256 digest` must match the fingerprint above. Increase `versionCode`
+(and `versionName`) in `app/build.gradle` for every release; Android refuses to install a lower or
+equal `versionCode` as an update.
+
+### Switching from debug builds
+
+Earlier APKs were debug builds signed with each computer's own debug key. The first time the signed
+release is installed, uninstall the old app once (this signs you out and clears any pending share;
+captures in Supabase are not affected). Every later release signed with this key installs straight
+over the previous one.
+
+Debug APKs (`npm run android:check`) are still signed with the local debug key and cannot update a
+release install.
 
 Text sharing and private image capture have passed physical Huawei acceptance. Physical acceptance
 for image sharing and **Save to phone** is still pending. The retired `android-diagnostic` app is
