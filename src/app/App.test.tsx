@@ -1,3 +1,4 @@
+import type { Session } from '@supabase/supabase-js';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -78,5 +79,21 @@ describe('application shell', () => {
     expect(window.location.pathname).toBe('/login');
     expect(window.location.search).toBe('');
     expect(screen.queryByText('Shared text')).not.toBeInTheDocument();
+  });
+
+  it('opens a signed-in visitor on the inbox', async () => {
+    window.history.pushState({}, '', '/');
+    const session = { user: { email: 'awa@example.com', id: 'user-id' } } as unknown as Session;
+    const order = vi.fn().mockResolvedValue({ data: [], error: null });
+    const client = Object.assign(createFakeSupabaseClient(session), {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ order }) }),
+      }),
+    });
+
+    render(<App client={client} />);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
+    expect(window.location.pathname).toBe('/inbox');
   });
 });

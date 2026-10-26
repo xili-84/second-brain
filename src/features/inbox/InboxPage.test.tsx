@@ -99,4 +99,45 @@ describe('inbox list', () => {
     expect(eq).toHaveBeenCalledWith('status', 'inbox');
     expect(order).toHaveBeenCalledWith('created_at', { ascending: false });
   });
+
+  it('does not sign thumbnails while a search is showing', async () => {
+    const order = vi.fn().mockResolvedValue({
+      data: [
+        {
+          attachments: [{ storage_path: 'user/image-id/attachment.png' }],
+          content: null,
+          created_at: '2026-07-24T10:00:00.000Z',
+          id: 'image-id',
+          kind: 'image',
+          source_url: null,
+          title: 'Receipt',
+        },
+      ],
+      error: null,
+    });
+    const createSignedUrls = vi.fn();
+    const rpc = vi.fn().mockResolvedValue({ data: [], error: null });
+    const client = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ order }) }),
+      }),
+      rpc,
+      storage: { from: vi.fn().mockReturnValue({ createSignedUrls }) },
+    } as unknown as SecondBrainClient;
+    const session = {
+      user: { id: '8cfd9d8f-dde8-4ec3-b7d8-2fcb4241240d' },
+    } as unknown as Session;
+
+    render(
+      <MemoryRouter initialEntries={['/inbox?q=receipt']}>
+        <AuthContext.Provider value={{ client, error: null, isRestoring: false, session }}>
+          <InboxPage />
+        </AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(order).toHaveBeenCalled());
+    expect(createSignedUrls).not.toHaveBeenCalled();
+  });
 });

@@ -43,7 +43,13 @@ The build also writes the Supabase origin into the Content-Security-Policy in `d
 npm ci
 npm run dev          # http://localhost:5173
 npm run test:watch
+npm run dev:mock     # http://localhost:5199 with fake data, no Supabase needed
 ```
+
+`dev:mock` (`vite.mock.config.ts` + `dev/mock/`) swaps in an in-memory client with sample
+captures, so screens can be designed and screenshotted offline. It is dev-server only and never
+part of the production build. Add `?signedout`, `?empty`, `?slow` or `?slowdata` to a URL to see
+the sign-in, empty and loading states.
 
 ## Check and build
 
@@ -103,15 +109,39 @@ CLI (`supabase db push`) after review. Never edit an applied migration; add a ne
 `supabase/config.toml` mirrors production auth settings: sign-up disabled, minimum password
 length 12.
 
+## Design system
+
+The "Editorial" look: white paper and black ink (dark mode follows the system), one newsroom red
+accent, Inter (bundled via `@fontsource-variable/inter`, so it works offline), heavy rules for
+structure and hairlines between items, Lucide icons.
+
+```text
+src/styles/tokens.css      colours (light + dark), type scale, spacing, radii, safe-area insets
+src/styles/base.css        reset, focus rings, .glass, reduced motion
+src/styles/components.css  buttons, notices, chips, empty states, skeletons, wordmark
+src/styles/shell.css       masthead, tab bar, top bar, sheets
+src/styles/list.css        capture rows, day groups, search field and results
+src/styles/article.css     capture detail and the pinned action bar
+src/styles/forms.css       composer, kind switch, fields, image picker, sign-in
+```
+
+Rules of thumb: use tokens, never raw colours; no inline `style` (the CSP is `style-src 'self'`);
+no `color-mix()` or `:has()` (older Android WebViews), so state is expressed with classes; the
+translucent `.glass` bars fall back to solid colour without `backdrop-filter`; every tap target is
+at least 44 px (`--tap`).
+
 ## Project layout
 
 ```text
-src/app/                 shell, routing, PWA update prompt
+src/app/                 shell, routing, masthead, tab bar, PWA update prompt
+src/components/          shared UI: Sheet, TopBar, ActionBar, Notice, EmptyState, Skeleton
 src/features/auth/       session restore, sign-in, protected routes
 src/features/capture/    quick capture, detail/edit, image upload, replacement, cleanup
-src/features/inbox/      Inbox / Reviewed / Archived lists
+src/features/inbox/      Inbox / Reviewed / Archived lists, thumbnails
+src/features/search/     search field and results
 src/features/share-target/  Android share handoff (Capacitor plugin bridge)
 src/lib/                 Supabase client, environment validation, generated DB types
+src/styles/              design tokens and stylesheets (see Design system)
 public/.htaccess         HTTPS, SPA routing, security headers, caching
 android/                 Capacitor Android project
 supabase/                config and migrations

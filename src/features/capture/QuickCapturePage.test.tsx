@@ -78,4 +78,59 @@ describe('quick capture persistence', () => {
 
     expect(await screen.findByText('Capture saved to your inbox.')).toBeVisible();
   });
+
+  it('switches capture kinds with a segmented control and offers a way back', () => {
+    const { client } = createInsertClient(Promise.resolve({ data: { id: 'x' }, error: null }));
+    renderCapture(client);
+
+    expect(screen.getByRole('heading', { level: 1, name: 'New capture' })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute('href', '/inbox');
+    const note = screen.getByRole('radio', { name: 'Note' });
+    expect(note).toBeChecked();
+    expect(note.closest('label')).toHaveClass('segmented__option--checked');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Link' }));
+    expect(screen.getByRole('textbox', { name: 'URL' })).toBeRequired();
+    expect(screen.queryByRole('textbox', { name: 'Note' })).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Link' }).closest('label')).toHaveClass(
+      'segmented__option--checked',
+    );
+    expect(note.closest('label')).not.toHaveClass('segmented__option--checked');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Image' }));
+    expect(screen.getByLabelText('Choose an image')).toHaveAttribute(
+      'accept',
+      'image/jpeg,image/png,image/webp',
+    );
+    expect(screen.getByRole('textbox', { name: 'Note' })).toBeVisible();
+  });
+
+  it('labels an Android share and says nothing is saved yet', () => {
+    const { client } = createInsertClient(Promise.resolve({ data: { id: 'x' }, error: null }));
+    render(
+      <MemoryRouter>
+        <AuthContext.Provider value={{ client, error: null, isRestoring: false, session }}>
+          <PendingShareContext.Provider
+            value={{
+              clearPendingShare: vi.fn().mockResolvedValue(undefined),
+              error: null,
+              pendingShare: {
+                id: 'share-1',
+                kind: 'text',
+                receivedAt: '2026-10-26T10:00:00.000Z',
+                text: 'https://example.com/story',
+                title: 'A story',
+              },
+            }}
+          >
+            <QuickCapturePage />
+          </PendingShareContext.Provider>
+        </AuthContext.Provider>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Shared to Second Brain' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Nothing has been saved yet.');
+    expect(screen.getByRole('button', { name: 'Save to inbox' })).toBeEnabled();
+  });
 });
