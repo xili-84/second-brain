@@ -1,10 +1,46 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import react from '@vitejs/plugin-react';
+import { loadEnv, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
 
-export default defineConfig({
+/**
+ * Writes the Supabase origin into dist/.htaccess so the Content-Security-Policy only allows the
+ * configured project. The build fails if the origin is missing or a placeholder remains.
+ */
+function htaccessCsp(mode: string): Plugin {
+  let outDir = 'dist';
+
+  return {
+    name: 'second-brain-htaccess-csp',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir);
+    },
+    closeBundle() {
+      const env = loadEnv(mode, process.cwd(), 'VITE_');
+      const origin = new URL(env.VITE_SUPABASE_URL ?? '').origin;
+      const file = resolve(outDir, '.htaccess');
+      const source = readFileSync(file, 'utf8');
+      const output = source
+        .replaceAll('__SUPABASE_WS_ORIGIN__', origin.replace(/^https:/, 'wss:'))
+        .replaceAll('__SUPABASE_ORIGIN__', origin);
+
+      if (/__SUPABASE_[A-Z_]+__/.test(output.replace(/^#.*$/gm, ''))) {
+        throw new Error('dist/.htaccess still contains a CSP placeholder.');
+      }
+
+      writeFileSync(file, output);
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
+    htaccessCsp(mode),
     VitePWA({
       // A waiting update must never reload an open editor and discard an unsaved draft.
       registerType: 'prompt',
@@ -55,4 +91,4 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     css: true,
   },
-});
+}));
