@@ -1,5 +1,17 @@
 apply plugin: 'com.android.application'
 
+// Release signing is read from android/keystore.properties (git-ignored) or environment
+// variables, never from committed files. See android/README.md.
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+def signingValue = { String key, String envKey ->
+    keystoreProperties.getProperty(key) ?: System.getenv(envKey)
+}
+def releaseStoreFile = signingValue('storeFile', 'SECOND_BRAIN_KEYSTORE_FILE')
+
 android {
     namespace = "net.okdaily.brain"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +19,8 @@ android {
         applicationId "net.okdaily.brain"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +28,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseStoreFile) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword signingValue('storePassword', 'SECOND_BRAIN_KEYSTORE_PASSWORD')
+                keyAlias signingValue('keyAlias', 'SECOND_BRAIN_KEY_ALIAS')
+                keyPassword signingValue('keyPassword', 'SECOND_BRAIN_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (releaseStoreFile) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

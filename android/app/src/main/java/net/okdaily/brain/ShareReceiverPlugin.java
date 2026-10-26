@@ -1,6 +1,7 @@
 package net.okdaily.brain;
 
 import android.content.ClipData;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -180,6 +181,13 @@ public final class ShareReceiverPlugin extends Plugin {
 
         if (sourceUri == null) {
             replacePendingShare(errorShare(title, text, "The sharing app did not provide an image."));
+            return;
+        }
+
+        if (!isAllowedSourceUri(sourceUri)) {
+            replacePendingShare(
+                    errorShare(title, text, "The sharing app did not provide a readable image.")
+            );
             return;
         }
 
@@ -450,6 +458,22 @@ public final class ShareReceiverPlugin extends Plugin {
 
     private static int unsigned(byte value) {
         return value & 0xff;
+    }
+
+    /**
+     * Only accept content:// URIs from other apps. A file:// URI or a URI pointing at this app's
+     * own provider would make Second Brain read its own private files on behalf of the sender.
+     */
+    private boolean isAllowedSourceUri(Uri uri) {
+        if (!ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())) {
+            return false;
+        }
+
+        String authority = uri.getAuthority();
+        String packageName = getContext().getPackageName();
+        return !TextUtils.isEmpty(authority)
+                && !authority.equals(packageName)
+                && !authority.startsWith(packageName + ".");
     }
 
     private String resolveImageMimeType(Intent intent, Uri sourceUri) {
