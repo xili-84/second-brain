@@ -15,6 +15,7 @@ export function DeleteSheet({ isDeleting, isImage, onCancel, onConfirm }: Delete
 
   return (
     <Sheet
+      canDismiss={!isDeleting}
       describedBy="delete-sheet-text"
       initialFocus={cancelButton}
       labelledBy="delete-sheet-title"

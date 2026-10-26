@@ -1,6 +1,8 @@
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
+import { useSheetDrag } from './useSheetDrag';
+
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -19,6 +21,8 @@ function focusableIn(node: HTMLElement) {
 }
 
 type SheetProps = {
+  /** False while the sheet must stay open (say, mid-delete): dragging it down does nothing. */
+  canDismiss?: boolean;
   children: ReactNode;
   describedBy?: string;
   /** Element to focus when the sheet opens; defaults to the first focusable element. */
@@ -31,11 +35,13 @@ type SheetProps = {
 /**
  * Modal bottom sheet (a centred dialog on wide screens).
  *
- * Focus moves into the sheet, Tab and Shift+Tab stay inside it, Escape and the backdrop call
- * onClose, and focus returns to the element that opened it. The rest of the page is made inert
+ * Focus moves into the sheet, Tab and Shift+Tab stay inside it, Escape, the backdrop and a drag
+ * down from the grab handle or the content (see useSheetDrag) call onClose, and focus returns to
+ * the element that opened it. The rest of the page is made inert
  * where the browser supports it and cannot scroll underneath.
  */
 export function Sheet({
+  canDismiss = true,
   children,
   describedBy,
   initialFocus,
@@ -44,7 +50,11 @@ export function Sheet({
   role = 'dialog',
 }: SheetProps) {
   const panel = useRef<HTMLDivElement>(null);
+  const layer = useRef<HTMLDivElement>(null);
+  const handle = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
+
+  useSheetDrag({ canDismiss, handle, layer, onDismiss: () => onCloseRef.current(), panel });
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -109,7 +119,7 @@ export function Sheet({
   }, [initialFocus]);
 
   return createPortal(
-    <div className="sheet-layer">
+    <div className="sheet-layer" ref={layer}>
       <div aria-hidden="true" className="sheet-backdrop" onClick={() => onCloseRef.current()} />
       <div
         aria-describedby={describedBy}
@@ -120,7 +130,8 @@ export function Sheet({
         role={role}
         tabIndex={-1}
       >
-        {children}
+        <div aria-hidden="true" className="sheet__handle" ref={handle} />
+        <div className="sheet__body">{children}</div>
       </div>
     </div>,
     document.body,

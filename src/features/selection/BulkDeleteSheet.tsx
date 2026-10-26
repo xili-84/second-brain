@@ -34,6 +34,7 @@ export function BulkDeleteSheet({
 
   return (
     <Sheet
+      canDismiss={!isDeleting}
       describedBy="bulk-delete-text"
       initialFocus={cancelButton}
       labelledBy="bulk-delete-title"

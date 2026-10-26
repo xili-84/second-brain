@@ -254,6 +254,8 @@ body.has-sheet {
   bottom: 0;
   left: 0;
   background: var(--scrim);
+  /* Fades as the sheet is dragged down; --sheet-drag-progress runs from 0 to 1. */
+  opacity: calc(1 - var(--sheet-drag-progress, 0) * 0.8);
 }
 
 .sheet {
@@ -263,29 +265,80 @@ body.has-sheet {
   left: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
   max-height: 85vh;
-  overflow-y: auto;
-  padding: var(--space-3) calc(var(--space-4) + var(--safe-right))
-    calc(var(--space-4) + var(--safe-bottom)) calc(var(--space-4) + var(--safe-left));
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   background: var(--surface);
   box-shadow: var(--shadow-pop);
   animation: sheet-in 180ms var(--ease);
+  will-change: transform;
+}
+
+/* Fills the gap under the sheet while it is lifted against the drag resistance. */
+.sheet::after {
+  content: '';
+  position: absolute;
+  top: calc(100% - 1px);
+  right: 0;
+  left: 0;
+  height: 3rem;
+  background: var(--surface);
 }
 
 .sheet:focus {
   outline: none;
 }
 
-.sheet::before {
+/* Grab handle: a tall, full-width target with a short bar, and the place a mouse drags from. */
+.sheet__handle {
+  display: flex;
+  flex: none;
+  justify-content: center;
+  padding: var(--space-3) 0 var(--space-3);
+  cursor: grab;
+  touch-action: none;
+}
+
+.sheet__handle::before {
   content: '';
-  align-self: center;
-  width: 2.25rem;
-  height: 0.25rem;
-  margin-bottom: var(--space-2);
+  width: 2.5rem;
+  height: 0.3125rem;
   border-radius: var(--radius-full);
-  background: var(--rule);
+  background: var(--ink-3);
+  opacity: 0.45;
+  transition: opacity 120ms var(--ease);
+}
+
+.sheet__handle:hover::before,
+.sheet-layer--dragging .sheet__handle::before {
+  opacity: 0.8;
+}
+
+.sheet-layer--dragging .sheet,
+.sheet-layer--dragging .sheet__handle {
+  cursor: grabbing;
+}
+
+.sheet-layer--dragging .sheet {
+  user-select: none;
+}
+
+.sheet-layer--settling .sheet {
+  transition: transform 220ms var(--ease);
+}
+
+.sheet-layer--settling .sheet-backdrop {
+  transition: opacity 220ms var(--ease);
+}
+
+.sheet__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 calc(var(--space-4) + var(--safe-right)) calc(var(--space-4) + var(--safe-bottom))
+    calc(var(--space-4) + var(--safe-left));
 }
 
 .sheet__title {
@@ -357,13 +410,17 @@ body.has-sheet {
     bottom: auto;
     left: 50%;
     width: 26rem;
-    padding: var(--space-5);
     border-radius: var(--radius-lg);
     transform: translate(-50%, -50%);
     animation: none;
   }
 
-  .sheet::before {
+  .sheet__body {
+    padding: var(--space-5);
+  }
+
+  .sheet::after,
+  .sheet__handle {
     display: none;
   }
 }
