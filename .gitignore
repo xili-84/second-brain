@@ -27,3 +27,8 @@ android-diagnostic/.idea/
 
 supabase/.branches/
 supabase/.temp/
+
+# Capacitor Android generated output
+android/app/src/main/assets/public/
+android/capacitor-cordova-android-plugins/build/
+android/build/
