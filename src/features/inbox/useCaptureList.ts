@@ -2,9 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 
 import type { SecondBrainClient } from '../../lib/supabase/client';
 import type { CaptureStatus } from '../capture/captureLifecycle';
+import {
+  selectWithPreview,
+  subscribeToLinkPreviews,
+  type LinkPreviewFields,
+} from '../linkPreview/linkPreview';
 import type { EmbeddedCaptureTags } from '../tags/tagNames';
 
-export type CaptureSummary = {
+export type CaptureSummary = LinkPreviewFields & {
   attachments?: { storage_path: string }[];
   capture_tags?: EmbeddedCaptureTags;
   content: string | null;
@@ -37,18 +42,24 @@ export function useCaptureList(
 
     setState((current) => ({ ...current, error: false, isLoading: true }));
 
-    const { data, error } = await client
-      .from('captures')
-      .select(
-        'id, kind, title, content, source_url, created_at, is_favorite, attachments(storage_path), capture_tags(tags(id, name))',
-      )
-      .eq('status', status)
-      .order('created_at', { ascending: false });
+    const { data, error } = await selectWithPreview((previewColumns) =>
+      client
+        .from('captures')
+        .select(
+          `id, kind, title, content, source_url, created_at, is_favorite, attachments(storage_path), capture_tags(tags(id, name))${previewColumns}`,
+        )
+        .eq('status', status)
+        .order('created_at', { ascending: false }),
+    );
 
     setState((current) =>
       error
         ? { ...current, error: true, isLoading: false }
-        : { captures: (data ?? []) as CaptureSummary[], error: false, isLoading: false },
+        : {
+            captures: (data ?? []) as unknown as CaptureSummary[],
+            error: false,
+            isLoading: false,
+          },
     );
   }, [client, status, userId]);
 
@@ -65,6 +76,12 @@ export function useCaptureList(
       ),
     }));
   }, []);
+
+  // A preview fetched after saving (or from the detail page) shows up without a reload.
+  useEffect(
+    () => subscribeToLinkPreviews(({ captureId, preview }) => patch(captureId, preview)),
+    [patch],
+  );
 
   return { ...state, patch, reload };
 }

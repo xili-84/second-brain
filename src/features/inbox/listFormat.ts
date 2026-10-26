@@ -1,20 +1,34 @@
 /** Formatting helpers shared by the capture list and search results. */
 
-type Titled = { kind: string; source_url: string | null; title: string | null };
+type Titled = {
+  kind: string;
+  link_title?: string | null;
+  source_url: string | null;
+  title: string | null;
+};
 
-/** Full title used for accessible names: the title, else the link URL, else "Untitled kind". */
+/**
+ * Full title used for headlines and accessible names: the title, else a link's page title from
+ * its preview, else the link URL, else "Untitled kind".
+ */
 export function captureTitle(capture: Titled) {
   return (
     capture.title?.trim() ||
+    (capture.kind === 'link' ? capture.link_title?.trim() : '') ||
     (capture.kind === 'link' && capture.source_url
       ? capture.source_url
       : `Untitled ${capture.kind}`)
   );
 }
 
-/** True when a link has no title, so the URL stands in as its headline. */
+/** True when a link has no title (nor a page title), so the URL stands in as its headline. */
 export function isUntitledLink(capture: Titled) {
-  return !capture.title?.trim() && capture.kind === 'link' && Boolean(capture.source_url);
+  return (
+    !capture.title?.trim() &&
+    !capture.link_title?.trim() &&
+    capture.kind === 'link' &&
+    Boolean(capture.source_url)
+  );
 }
 
 /** A URL without its scheme and leading "www.", for display only. */

@@ -2,9 +2,11 @@ import type { CaptureStatus } from '../capture/captureLifecycle';
 import { captureStatusDetails } from '../capture/captureLifecycle';
 import { TagList } from '../tags/TagList';
 import { tagsFromEmbed } from '../tags/tagNames';
+import { safeFavicon } from '../linkPreview/linkPreview';
 import { CaptureRow } from './CaptureRow';
 import { captureTitle, displayUrl, domainOf, groupByDay, isUntitledLink } from './listFormat';
 import type { CaptureSummary } from './useCaptureList';
+import { thumbnailKey, thumbnailSource } from './useThumbnails';
 
 type CaptureRiverProps = {
   captures: CaptureSummary[];
@@ -41,17 +43,24 @@ export function CaptureRiver({
                   : captureTitle(capture);
               const untitledLink = isUntitledLink(capture);
               const isImage = capture.kind === 'image';
-              const thumbnailPath = isImage ? capture.attachments?.[0]?.storage_path : undefined;
-              // Note text is a helpful preview; image notes stay private in lists.
+              const isLink = capture.kind === 'link';
+              const thumbnail = thumbnailSource(capture);
+              // Note text is a helpful preview; image notes stay private in lists. Links show
+              // their page description when a preview was fetched.
               const excerpt =
-                capture.kind === 'note' && capture.title?.trim() ? capture.content?.trim() : null;
+                capture.kind === 'note' && capture.title?.trim()
+                  ? capture.content?.trim()
+                  : isLink
+                    ? capture.link_description
+                    : null;
 
               return (
                 <CaptureRow
                   accessibleName={`Open ${title}`}
                   createdAt={capture.created_at}
-                  domain={capture.kind === 'link' ? domainOf(capture.source_url) : null}
+                  domain={isLink ? capture.link_site_name || domainOf(capture.source_url) : null}
                   excerpt={excerpt}
+                  favicon={isLink ? safeFavicon(capture.link_favicon) : null}
                   favorite={{
                     isFavorite: Boolean(capture.is_favorite),
                     onToggle: () => onToggleFavorite(capture),
@@ -60,11 +69,11 @@ export function CaptureRiver({
                   key={capture.id}
                   kind={capture.kind}
                   section={details.path}
-                  showThumbnail={isImage}
+                  showThumbnail={isImage || Boolean(isLink && thumbnail)}
                   tags={
                     <TagList tags={tagsFromEmbed(capture.capture_tags).map((tag) => tag.name)} />
                   }
-                  thumbnailUrl={thumbnailPath ? thumbnails[thumbnailPath] : undefined}
+                  thumbnailUrl={thumbnail ? thumbnails[thumbnailKey(thumbnail)] : undefined}
                   title={untitledLink ? displayUrl(title) : title}
                   titleIsUrl={untitledLink}
                 />

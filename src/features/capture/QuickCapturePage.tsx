@@ -31,6 +31,7 @@ import {
   validateImageMetadata,
   type ImageOperation,
 } from './imageCapture';
+import { requestLinkPreview } from '../linkPreview/linkPreview';
 
 function createPreviewUrl(file: File) {
   return typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : null;
@@ -267,6 +268,11 @@ export function QuickCapturePage() {
     }
 
     setHasSaved(true);
+
+    if (draft.kind === 'link') {
+      // Fetched in the background; the inbox row picks the preview up when it arrives.
+      void requestLinkPreview(client, draft.id);
+    }
 
     let tagWarning: string | null = null;
     // Image captures get their id from the upload operation; notes and links use the draft id.

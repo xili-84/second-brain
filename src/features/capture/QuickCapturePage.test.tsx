@@ -105,6 +105,25 @@ describe('quick capture persistence', () => {
     expect(screen.getByRole('textbox', { name: 'Note' })).toBeVisible();
   });
 
+  it('asks for a link preview in the background once a link is saved', async () => {
+    const { client, insert } = createInsertClient(
+      Promise.resolve({ data: { id: 'x' }, error: null }),
+    );
+    const invoke = vi.fn().mockResolvedValue({ data: null, error: { context: { status: 404 } } });
+    Object.assign(client, { functions: { invoke } });
+    renderCapture(client);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Link' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'URL' }), {
+      target: { value: 'https://example.com/story' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save to inbox' }));
+
+    expect(await screen.findByText('Capture saved to your inbox.')).toBeVisible();
+    const savedId = (insert.mock.calls[0]![0] as { id: string }).id;
+    expect(invoke).toHaveBeenCalledWith('link-preview', { body: { captureId: savedId } });
+  });
+
   it('labels an Android share and says nothing is saved yet', () => {
     const { client } = createInsertClient(Promise.resolve({ data: { id: 'x' }, error: null }));
     render(

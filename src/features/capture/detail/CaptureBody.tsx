@@ -1,30 +1,31 @@
-import { ExternalLink, Globe } from 'lucide-react';
+import type { ComponentProps } from 'react';
 
-import { domainOf } from '../../inbox/listFormat';
+import { LinkPreviewCard } from '../../linkPreview/LinkPreviewCard';
 
 type CaptureBodyProps = {
   content: string | null;
   kind: string;
+  /** Link captures: preview fields and actions for the link card. */
+  linkPreview?: Omit<ComponentProps<typeof LinkPreviewCard>, 'sourceUrl'> | undefined;
   sourceUrl: string | null;
 };
 
 /** The reading view: note text in a comfortable measure, or a card that opens the link. */
-export function CaptureBody({ content, kind, sourceUrl }: CaptureBodyProps) {
+export function CaptureBody({ content, kind, linkPreview, sourceUrl }: CaptureBodyProps) {
   if (kind === 'link') {
     return (
       <article aria-label="link content" className="article-body">
         {sourceUrl && (
-          <a className="link-card" href={sourceUrl} rel="noreferrer" target="_blank">
-            <span aria-hidden="true" className="link-card__icon">
-              <Globe className="icon" />
-            </span>
-            <span className="link-card__text">
-              <span className="link-card__domain">{domainOf(sourceUrl) ?? 'Open link'}</span>
-              <span className="link-card__url">{sourceUrl}</span>
-            </span>
-            <ExternalLink aria-hidden="true" className="icon" />
-            <span className="visually-hidden">(opens in a new tab)</span>
-          </a>
+          <LinkPreviewCard
+            fields={linkPreview?.fields ?? {}}
+            hasPreview={linkPreview?.hasPreview ?? false}
+            headline={linkPreview?.headline}
+            imageUrl={linkPreview?.imageUrl ?? null}
+            onImageError={linkPreview?.onImageError ?? noop}
+            onRefresh={linkPreview?.onRefresh ?? noop}
+            refreshState={linkPreview?.refreshState ?? 'idle'}
+            sourceUrl={sourceUrl}
+          />
         )}
       </article>
     );
@@ -40,3 +41,5 @@ export function CaptureBody({ content, kind, sourceUrl }: CaptureBodyProps) {
     </article>
   );
 }
+
+function noop() {}

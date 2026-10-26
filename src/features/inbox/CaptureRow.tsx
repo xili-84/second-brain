@@ -12,6 +12,8 @@ type CaptureRowProps = {
   createdAt: string;
   domain?: string | null;
   excerpt?: ReactNode;
+  /** A link's favicon (a vetted data URL), shown before the domain. */
+  favicon?: string | null;
   /** With onToggle a star button is shown; without it a favorite only gets a small marker. */
   favorite?: { isFavorite: boolean; onToggle?: (() => void) | undefined } | undefined;
   href: string;
@@ -33,6 +35,7 @@ export function CaptureRow({
   createdAt,
   domain,
   excerpt,
+  favicon,
   favorite,
   href,
   kind,
@@ -64,6 +67,9 @@ export function CaptureRow({
             {domain && (
               <>
                 <span aria-hidden="true" className="dot-sep" />
+                {favicon && (
+                  <img alt="" className="row__favicon" height="14" src={favicon} width="14" />
+                )}
                 <span className="row__domain">{domain}</span>
               </>
             )}

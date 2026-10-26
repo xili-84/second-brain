@@ -43,8 +43,14 @@ import { FavoriteButton } from '../tags/FavoriteButton';
 import { TagEditor } from '../tags/TagEditor';
 import type { EmbeddedCaptureTags } from '../tags/tagNames';
 import { useCaptureMeta } from '../tags/useCaptureMeta';
+import {
+  removeLinkPreviewImage,
+  selectWithPreview,
+  type LinkPreviewFields,
+} from '../linkPreview/linkPreview';
+import { useLinkPreview } from '../linkPreview/useLinkPreview';
 
-type CaptureRecord = {
+type CaptureRecord = LinkPreviewFields & {
   attachments: StoredImageAttachment[];
   capture_tags?: EmbeddedCaptureTags;
   content: string | null;
@@ -114,6 +120,7 @@ export function CaptureDetailPage() {
   const userId = session?.user.id;
   const [capture, setCapture] = useState<CaptureRecord | null>(null);
   const meta = useCaptureMeta(client, session?.user.id, capture);
+  const linkPreview = useLinkPreview(client, capture);
   const [draft, setDraft] = useState<CaptureDraft | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -146,14 +153,17 @@ export function CaptureDetailPage() {
     imageRefreshAttempted.current = false;
     setError(null);
 
-    const { data, error: loadError } = await client
-      .from('captures')
-      .select(
-        'id, kind, status, title, content, source_url, created_at, updated_at, is_favorite, attachments(id, storage_path, original_name, mime_type, size_bytes), capture_tags(tags(id, name))',
-      )
-      .eq('id', captureId)
-      .eq('user_id', userId)
-      .single();
+    const { data: loaded, error: loadError } = await selectWithPreview((previewColumns) =>
+      client
+        .from('captures')
+        .select(
+          `id, kind, status, title, content, source_url, created_at, updated_at, is_favorite, attachments(id, storage_path, original_name, mime_type, size_bytes), capture_tags(tags(id, name))${previewColumns}`,
+        )
+        .eq('id', captureId)
+        .eq('user_id', userId)
+        .single(),
+    );
+    const data = loaded as CaptureRecord | null;
 
     if (loadError || !data || !isSupportedKind(data.kind) || !isSupportedStatus(data.status)) {
       setCapture(null);
@@ -387,6 +397,10 @@ export function CaptureDetailPage() {
       setDraft(toDraft(data));
       setMessage('Changes saved.');
       setIsEditing(false);
+      // A new address deserves a new preview.
+      if (data.kind === 'link' && data.source_url !== capture.source_url) {
+        void linkPreview.refresh();
+      }
     }
 
     setPendingAction(null);
@@ -472,6 +486,10 @@ export function CaptureDetailPage() {
       });
       deleted = !deleteError && data === true;
     } else {
+      if (capture.kind === 'link') {
+        // Best effort first: the preview image is private, and a leftover would only waste space.
+        await removeLinkPreviewImage(client, linkPreview.fields.link_image_path);
+      }
       const { data, error: deleteError } = await client
         .from('captures')
         .delete()
@@ -593,7 +611,10 @@ export function CaptureDetailPage() {
   const isNativeApp = isNativeImageSaveAvailable();
   const attachment = capture.attachments[0];
   const hasCopyableText = (capture.kind === 'note' || capture.kind === 'image') && capture.content;
-  const displayTitle = capture.title?.trim() || `Untitled ${capture.kind}`;
+  const displayTitle =
+    capture.title?.trim() ||
+    (capture.kind === 'link' ? linkPreview.fields.link_title?.trim() : null) ||
+    `Untitled ${capture.kind}`;
 
   const topActions = !isEditing && (
     <>
@@ -688,6 +709,15 @@ export function CaptureDetailPage() {
           <CaptureBody
             content={capture.content}
             kind={capture.kind}
+            linkPreview={{
+              fields: linkPreview.fields,
+              hasPreview: linkPreview.hasPreview,
+              headline: displayTitle,
+              imageUrl: linkPreview.imageUrl,
+              onImageError: linkPreview.dropImage,
+              onRefresh: () => void linkPreview.refresh(),
+              refreshState: linkPreview.refreshState,
+            }}
             sourceUrl={capture.source_url}
           />
 
