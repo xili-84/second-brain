@@ -5,8 +5,6 @@ import type { CaptureDraft } from './captureDraft';
 import {
   createImageOperation,
   readPendingImageOperation,
-  reconcileImageStorage,
-  rememberPendingImageOperation,
   saveImageCapture,
   validateImageFile,
   validateImageMetadata,
@@ -147,90 +145,5 @@ describe('image capture safety', () => {
       saved: true,
     });
     expect(remove).not.toHaveBeenCalled();
-  });
-
-  it('clears a stale local marker when its attachment was already finalized', async () => {
-    rememberPendingImageOperation(operation);
-    const completionBuilder = {
-      eq: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({
-        data: {
-          capture_id: operation.captureId,
-          id: operation.attachmentId,
-          storage_path: operation.storagePath,
-        },
-        error: null,
-      }),
-      select: vi.fn().mockReturnThis(),
-    };
-    const attachmentListBuilder = {
-      eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-      select: vi.fn().mockReturnThis(),
-    };
-    const remove = vi.fn();
-    const client = {
-      from: vi
-        .fn()
-        .mockReturnValueOnce(completionBuilder)
-        .mockReturnValueOnce(attachmentListBuilder),
-      storage: {
-        from: vi.fn().mockReturnValue({
-          list: vi.fn().mockResolvedValue({ data: [], error: null }),
-          remove,
-        }),
-      },
-    } as unknown as SecondBrainClient;
-
-    await expect(reconcileImageStorage(client, userId)).resolves.toBeNull();
-    expect(readPendingImageOperation()).toBeNull();
-    expect(remove).not.toHaveBeenCalled();
-  });
-
-  it('removes only old unreferenced objects during reconciliation', async () => {
-    const referencedPath = `${userId}/capture-folder/referenced.png`;
-    const orphanedPath = `${userId}/capture-folder/orphaned.png`;
-    const attachmentListBuilder = {
-      eq: vi.fn().mockResolvedValue({
-        data: [{ storage_path: referencedPath }],
-        error: null,
-      }),
-      select: vi.fn().mockReturnThis(),
-    };
-    const list = vi
-      .fn()
-      .mockResolvedValueOnce({
-        data: [{ id: null, name: 'capture-folder' }],
-        error: null,
-      })
-      .mockResolvedValueOnce({
-        data: [
-          {
-            created_at: '2026-07-24T12:00:00.000Z',
-            id: 'referenced-object',
-            name: 'referenced.png',
-          },
-          {
-            created_at: '2026-07-24T12:00:00.000Z',
-            id: 'orphaned-object',
-            name: 'orphaned.png',
-          },
-          {
-            created_at: new Date().toISOString(),
-            id: 'new-object',
-            name: 'new.png',
-          },
-        ],
-        error: null,
-      });
-    const remove = vi.fn().mockResolvedValue({ data: [], error: null });
-    const client = {
-      from: vi.fn().mockReturnValue(attachmentListBuilder),
-      storage: {
-        from: vi.fn().mockReturnValue({ list, remove }),
-      },
-    } as unknown as SecondBrainClient;
-
-    await expect(reconcileImageStorage(client, userId)).resolves.toBeNull();
-    expect(remove).toHaveBeenCalledWith([orphanedPath]);
   });
 });

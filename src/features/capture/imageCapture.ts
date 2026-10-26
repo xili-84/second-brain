@@ -3,7 +3,6 @@ import type { CaptureDraft } from './captureDraft';
 
 export const IMAGE_BUCKET = 'capture-images';
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-export const IMAGE_RECONCILIATION_AGE_MS = 60 * 60 * 1000;
 
 const PENDING_IMAGE_KEY = 'second-brain.pending-image-upload';
 
@@ -13,6 +12,8 @@ export type ImageOperation = {
   attachmentId: string;
   captureId: string;
   createdAt: string;
+  /** When the save attempt started and the cleanup marker was written. */
+  markedAt?: string;
   storagePath: string;
   userId: string;
 };
@@ -183,7 +184,8 @@ function isImageOperation(value: unknown): value is ImageOperation {
     typeof candidate.captureId === 'string' &&
     typeof candidate.createdAt === 'string' &&
     typeof candidate.storagePath === 'string' &&
-    typeof candidate.userId === 'string'
+    typeof candidate.userId === 'string' &&
+    (candidate.markedAt === undefined || typeof candidate.markedAt === 'string')
   );
 }
 
@@ -202,9 +204,12 @@ export function readPendingImageOperation() {
   }
 }
 
-export function rememberPendingImageOperation(operation: ImageOperation) {
+export function rememberPendingImageOperation(operation: ImageOperation, now = new Date()) {
   try {
-    localStorage.setItem(PENDING_IMAGE_KEY, JSON.stringify(operation));
+    localStorage.setItem(
+      PENDING_IMAGE_KEY,
+      JSON.stringify({ ...operation, markedAt: now.toISOString() }),
+    );
     return true;
   } catch {
     return false;
@@ -219,7 +224,10 @@ export function clearPendingImageOperation(operation: ImageOperation) {
   }
 }
 
-async function findCompletedAttachment(client: SecondBrainClient, operation: ImageOperation) {
+export async function findCompletedAttachment(
+  client: SecondBrainClient,
+  operation: ImageOperation,
+) {
   const { data, error } = await client
     .from('attachments')
     .select('id, capture_id, storage_path')
@@ -256,7 +264,7 @@ async function finalizeImage(
   return client.rpc('finalize_image_capture', args);
 }
 
-async function removePendingObject(client: SecondBrainClient, operation: ImageOperation) {
+export async function removePendingObject(client: SecondBrainClient, operation: ImageOperation) {
   const { error } = await client.storage.from(IMAGE_BUCKET).remove([operation.storagePath]);
 
   if (!error) {
@@ -337,99 +345,4 @@ export async function saveImageCapture(
       : 'Image metadata was not saved. The uploaded object was removed and your draft remains available.',
     saved: false,
   };
-}
-
-async function reconcilePendingMarker(client: SecondBrainClient, userId: string) {
-  const pending = readPendingImageOperation();
-
-  if (!pending || pending.userId !== userId) {
-    return null;
-  }
-
-  const completionCheck = await findCompletedAttachment(client, pending);
-
-  if (completionCheck.error) {
-    return 'An unfinished image operation could not be checked. It will be retried later.';
-  }
-
-  if (completionCheck.completed) {
-    clearPendingImageOperation(pending);
-    return null;
-  }
-
-  const cleanupError = await removePendingObject(client, pending);
-  return cleanupError
-    ? 'An unfinished image upload could not be cleaned up. It will be retried later.'
-    : null;
-}
-
-export async function reconcileImageStorage(client: SecondBrainClient, userId: string) {
-  const markerWarning = await reconcilePendingMarker(client, userId);
-
-  if (markerWarning) {
-    return markerWarning;
-  }
-
-  const { data: attachments, error: attachmentError } = await client
-    .from('attachments')
-    .select('storage_path')
-    .eq('user_id', userId);
-
-  if (attachmentError) {
-    return 'Image cleanup could not inspect attachment metadata. It will be retried later.';
-  }
-
-  const referencedPaths = new Set(attachments.map((attachment) => attachment.storage_path));
-  const { data: folders, error: folderError } = await client.storage
-    .from(IMAGE_BUCKET)
-    .list(userId, {
-      limit: 1000,
-    });
-
-  if (folderError) {
-    return 'Image cleanup could not inspect private Storage. It will be retried later.';
-  }
-
-  const cutoff = Date.now() - IMAGE_RECONCILIATION_AGE_MS;
-  const orphanedPaths: string[] = [];
-
-  for (const folder of folders) {
-    if (folder.id) {
-      continue;
-    }
-
-    const folderPath = `${userId}/${folder.name}`;
-    const { data: objects, error: objectError } = await client.storage
-      .from(IMAGE_BUCKET)
-      .list(folderPath, { limit: 1000 });
-
-    if (objectError) {
-      return 'Image cleanup could not inspect every private folder. It will be retried later.';
-    }
-
-    for (const object of objects) {
-      if (!object.id || !object.created_at) {
-        continue;
-      }
-
-      const storagePath = `${folderPath}/${object.name}`;
-      const createdAt = new Date(object.created_at).getTime();
-
-      if (Number.isFinite(createdAt) && createdAt <= cutoff && !referencedPaths.has(storagePath)) {
-        orphanedPaths.push(storagePath);
-      }
-    }
-  }
-
-  if (orphanedPaths.length === 0) {
-    return null;
-  }
-
-  const { error: cleanupError } = await client.storage
-    .from(IMAGE_BUCKET)
-    .remove(orphanedPaths.slice(0, 1000));
-
-  return cleanupError
-    ? 'Old unreferenced images could not be cleaned up. It will be retried later.'
-    : null;
 }

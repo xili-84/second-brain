@@ -14,7 +14,7 @@ import { useAuth } from '../features/auth/authContext';
 import { ProtectedRoute } from '../features/auth/ProtectedRoute';
 import { SignInPage } from '../features/auth/SignInPage';
 import { CaptureDetailPage } from '../features/capture/CaptureDetailPage';
-import { reconcileImageStorage } from '../features/capture/imageCapture';
+import { reconcileImageStorage } from '../features/capture/imageReconciliation';
 import { QuickCapturePage } from '../features/capture/QuickCapturePage';
 import { CaptureListPage, InboxPage } from '../features/inbox/InboxPage';
 import { PendingShareProvider } from '../features/share-target/PendingShareProvider';
