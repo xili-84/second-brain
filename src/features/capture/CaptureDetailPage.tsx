@@ -1,5 +1,22 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  Archive,
+  Check,
+  Copy,
+  Download,
+  Pencil,
+  RotateCcw,
+  Trash2,
+  type LucideIcon,
+} from 'lucide-react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+
+import { sections, type SectionState } from '../../app/navigation';
+import { ActionBar } from '../../components/ActionBar';
+import { EmptyState } from '../../components/EmptyState';
+import { Notice } from '../../components/Notice';
+import { SkeletonArticle } from '../../components/Skeleton';
+import { TopBar } from '../../components/TopBar';
 
 import { useAuth } from '../auth/authContext';
 import {
@@ -15,6 +32,12 @@ import {
   DOWNLOAD_URL_TTL_SECONDS,
   removeCaptureImageObjects,
 } from './imageStorage';
+import { ArticleHeader } from './detail/ArticleHeader';
+import { CaptureBody } from './detail/CaptureBody';
+import { CaptureEditForm } from './detail/CaptureEditForm';
+import { CaptureImage } from './detail/CaptureImage';
+import { DeleteSheet } from './detail/DeleteSheet';
+import { ImageReplacement } from './detail/ImageReplacement';
 import { isNativeImageSaveAvailable, saveImageToPhone } from './nativeImageSaver';
 
 type CaptureRecord = {
@@ -80,6 +103,7 @@ async function copyTextToClipboard(text: string) {
 export function CaptureDetailPage() {
   const { captureId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { client, session } = useAuth();
   const userId = session?.user.id;
   const [capture, setCapture] = useState<CaptureRecord | null>(null);
@@ -429,6 +453,8 @@ export function CaptureDetailPage() {
       );
 
       if (storageError) {
+        // Close the sheet so the error is visible on the page; Delete can simply be tried again.
+        setIsConfirmingDelete(false);
         setError('The private image was not removed. Nothing else was deleted; please retry.');
         setPendingAction(null);
         return;
@@ -450,6 +476,7 @@ export function CaptureDetailPage() {
     }
 
     if (!deleted) {
+      setIsConfirmingDelete(false);
       setError(
         capture.kind === 'image'
           ? 'The image was removed, but its capture records still need cleanup. Please retry.'
@@ -513,28 +540,43 @@ export function CaptureDetailPage() {
     }
   }
 
+  const backSection = (location.state as SectionState | null)?.section;
+  const statusPath =
+    capture && isSupportedStatus(capture.status)
+      ? captureStatusDetails[capture.status].path
+      : '/inbox';
+  const back = sections.find((section) => section.path === (backSection ?? statusPath)) ??
+    sections[0] ?? { label: 'Inbox', path: '/inbox' };
+  const backLink = {
+    label: back.label,
+    name: `Back to ${back.label.toLowerCase()}`,
+    to: back.path,
+  };
+
   if (isLoading) {
     return (
-      <section className="workspace-panel" aria-live="polite">
-        <p className="eyebrow">Capture detail</p>
-        <h1>Loading…</h1>
+      <section aria-busy="true" aria-label="Loading capture" className="page">
+        <TopBar back={backLink} />
+        <SkeletonArticle />
       </section>
     );
   }
 
   if (!capture || !draft || !isSupportedStatus(capture.status)) {
     return (
-      <section className="message-panel">
-        <p className="eyebrow">Capture unavailable</p>
-        <h1>Nothing to review here.</h1>
-        {error && (
-          <div className="form-message form-message--error" role="alert">
-            {error}
-          </div>
-        )}
-        <Link className="text-link" to="/inbox">
-          Return to inbox
-        </Link>
+      <section className="page">
+        <TopBar back={backLink} />
+        <EmptyState
+          action={
+            <Link className="btn btn--secondary" to="/inbox">
+              Return to inbox
+            </Link>
+          }
+          headingLevel="h1"
+          title="Nothing to review here"
+        >
+          {error ?? undefined}
+        </EmptyState>
       </section>
     );
   }
@@ -542,373 +584,163 @@ export function CaptureDetailPage() {
   const statusDetails = captureStatusDetails[capture.status];
   const isBusy = pendingAction !== null || isValidatingReplacement;
   const isNativeApp = isNativeImageSaveAvailable();
+  const attachment = capture.attachments[0];
+  const hasCopyableText = (capture.kind === 'note' || capture.kind === 'image') && capture.content;
   const displayTitle = capture.title?.trim() || `Untitled ${capture.kind}`;
 
+  const topActions = !isEditing && (
+    <>
+      {capture.kind === 'image' && isNativeApp && attachment && imageUrl && (
+        <IconButton
+          disabled={isSavingToPhone || hasSavedToPhone}
+          icon={hasSavedToPhone ? Check : Download}
+          label={
+            isSavingToPhone
+              ? 'Saving to phone…'
+              : hasSavedToPhone
+                ? 'Saved to phone'
+                : 'Save to phone'
+          }
+          onClick={() => void saveImageToDevice()}
+        />
+      )}
+      {hasCopyableText && (
+        <IconButton icon={Copy} label="Copy content" onClick={() => void copyCaptureContent()} />
+      )}
+      <IconButton icon={Pencil} label="Edit" onClick={startEditing} />
+      <IconButton
+        disabled={isBusy}
+        icon={Trash2}
+        label="Delete"
+        onClick={() => setIsConfirmingDelete(true)}
+      />
+    </>
+  );
+
   return (
-    <section
-      className="workspace-panel capture-detail-page"
-      aria-labelledby="capture-detail-heading"
-    >
-      <header className="capture-detail-header">
-        <Link
-          aria-label={'Back to ' + statusDetails.label.toLowerCase()}
-          className={isNativeApp ? 'capture-back-link capture-icon-button' : 'capture-back-link'}
-          title={isNativeApp ? 'Back to ' + statusDetails.label.toLowerCase() : undefined}
-          to={statusDetails.path}
-        >
-          <CaptureActionIcon name="back" />
-          {!isNativeApp && <span>{statusDetails.label}</span>}
-        </Link>
+    <section aria-labelledby="capture-detail-heading" className="page page--actions">
+      <TopBar actions={topActions} back={backLink} />
 
-        <p className="eyebrow">Review and organize</p>
-        <h1 id="capture-detail-heading">{isEditing ? 'Edit capture' : displayTitle}</h1>
+      <ArticleHeader
+        createdAt={capture.created_at}
+        kind={capture.kind}
+        statusLabel={statusDetails.label}
+        title={isEditing ? 'Edit capture' : displayTitle}
+      />
 
-        <div className="capture-detail-meta">
-          <span className="status-pill">{statusDetails.label}</span>
-          <span>{capture.kind}</span>
-          <time dateTime={capture.created_at}>
-            Created{' '}
-            {new Intl.DateTimeFormat(undefined, {
-              dateStyle: 'medium',
-              timeStyle: 'short',
-            }).format(new Date(capture.created_at))}
-          </time>
-        </div>
-        {!isEditing && (
-          <div className="capture-header-actions" aria-label="Capture actions">
-            <button
-              aria-label="Edit"
-              className={
-                isNativeApp
-                  ? 'secondary-button capture-action-button capture-icon-button'
-                  : 'secondary-button capture-action-button'
-              }
-              onClick={startEditing}
-              title={isNativeApp ? 'Edit' : undefined}
-              type="button"
-            >
-              <CaptureActionIcon name="edit" />
-              {!isNativeApp && <span>Edit</span>}
-            </button>
-            {(capture.kind === 'note' || capture.kind === 'image') && capture.content && (
-              <button
-                aria-label="Copy content"
-                className={
-                  isNativeApp
-                    ? 'secondary-button capture-action-button capture-icon-button'
-                    : 'secondary-button capture-action-button'
-                }
-                onClick={() => void copyCaptureContent()}
-                title={isNativeApp ? 'Copy content' : undefined}
-                type="button"
-              >
-                <CaptureActionIcon name="copy" />
-                {!isNativeApp && (
-                  <span>{message?.startsWith('Content copied') ? 'Copied' : 'Copy'}</span>
-                )}
-              </button>
-            )}
-          </div>
-        )}
-      </header>
-      {error && (
-        <div className="form-message form-message--error" role="alert">
-          {error}
-        </div>
+      {error && <Notice tone="error">{error}</Notice>}
+      {message && <Notice tone="success">{message}</Notice>}
+
+      {capture.kind === 'image' && !isReplacingImage && (
+        <CaptureImage
+          alt={capture.title || 'Saved image'}
+          attachment={attachment}
+          error={imageError}
+          onError={() => void refreshImageUrl()}
+          onRetry={() => void refreshImageUrl(true)}
+          url={imageUrl}
+        />
       )}
 
-      {message && (
-        <div className="form-message form-message--success" role="status">
-          {message}
-        </div>
-      )}
-
-      {capture.kind === 'image' && (
-        <>
-          {!isReplacingImage &&
-            (imageUrl ? (
-              <>
-                <figure className="capture-image">
-                  <img
-                    alt={capture.title || 'Saved image'}
-                    onError={() => void refreshImageUrl()}
-                    src={imageUrl}
-                  />
-                  {capture.attachments[0] && (
-                    <figcaption>
-                      {capture.attachments[0].original_name} ·{' '}
-                      {(capture.attachments[0].size_bytes / (1024 * 1024)).toFixed(2)} MiB
-                    </figcaption>
-                  )}
-                </figure>
-                {!isEditing && isNativeApp && capture.attachments[0] && (
-                  <div className="form-actions">
-                    <button
-                      className="secondary-button"
-                      disabled={isSavingToPhone || hasSavedToPhone}
-                      onClick={() => void saveImageToDevice()}
-                      type="button"
-                    >
-                      {isSavingToPhone
-                        ? 'Saving to phone…'
-                        : hasSavedToPhone
-                          ? 'Saved to phone'
-                          : 'Save to phone'}
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="image-placeholder" role={imageError ? 'alert' : 'status'}>
-                <span>{imageError ?? 'Loading private image…'}</span>
-                {imageError && capture.attachments[0] && (
-                  <button
-                    className="text-button"
-                    onClick={() => void refreshImageUrl(true)}
-                    type="button"
-                  >
-                    Retry
-                  </button>
-                )}
-              </div>
-            ))}
-
-          {isEditing && capture.attachments[0] && !isReplacingImage && (
-            <div className="image-edit-actions">
-              <button
-                className="secondary-button"
-                disabled={isBusy}
-                onClick={beginImageReplacement}
-                type="button"
-              >
-                Remove image
-              </button>
-              <p>The current image stays published until you save a replacement.</p>
-            </div>
-          )}
-
-          {isEditing && isReplacingImage && (
-            <section className="image-replacement-panel" aria-labelledby="replacement-heading">
-              <p className="section-kicker">Image replacement</p>
-              <h2 id="replacement-heading">Choose a new image</h2>
-              <p>The published image is unchanged until Save changes succeeds.</p>
-              <label>
-                Replacement image
-                <input
-                  accept="image/jpeg,image/png,image/webp"
-                  disabled={isBusy}
-                  onChange={(event) => void chooseReplacementImage(event.target.files?.[0] ?? null)}
-                  type="file"
-                />
-              </label>
-              {isValidatingReplacement && <p role="status">Checking image…</p>}
-              {replacementImage && (
-                <p className="selected-image-name">
-                  Selected: {replacementImage.name} ·{' '}
-                  {(replacementImage.size / (1024 * 1024)).toFixed(2)} MiB
-                </p>
-              )}
-              <button
-                className="secondary-button"
-                disabled={isBusy}
-                onClick={undoImageReplacement}
-                type="button"
-              >
-                Keep current image
-              </button>
-            </section>
-          )}
-        </>
+      {isEditing && capture.kind === 'image' && attachment && (
+        <ImageReplacement
+          isBusy={isBusy}
+          isReplacing={isReplacingImage}
+          isValidating={isValidatingReplacement}
+          onBegin={beginImageReplacement}
+          onChoose={(file) => void chooseReplacementImage(file)}
+          onUndo={undoImageReplacement}
+          replacement={replacementImage}
+        />
       )}
 
       {isEditing ? (
-        <form className="form-stack" onSubmit={(event) => void handleSave(event)}>
-          <label>
-            Title <span className="optional-label">Optional</span>
-            <input
-              disabled={isBusy}
-              maxLength={500}
-              onChange={(event) => updateDraft({ title: event.target.value })}
-              value={draft.title}
-            />
-          </label>
-
-          {draft.kind === 'note' || draft.kind === 'image' ? (
-            <label>
-              Note
-              {draft.kind === 'image' && <span className="optional-label">Optional</span>}
-              <textarea
-                disabled={isBusy}
-                onChange={(event) => updateDraft({ content: event.target.value })}
-                rows={12}
-                value={draft.content}
-              />
-            </label>
-          ) : (
-            <label>
-              URL
-              <input
-                disabled={isBusy}
-                inputMode="url"
-                onChange={(event) => updateDraft({ sourceUrl: event.target.value })}
-                required
-                type="url"
-                value={draft.sourceUrl}
-              />
-            </label>
-          )}
-
-          <div className="form-actions">
-            <button className="primary-button" disabled={isBusy} type="submit">
-              {pendingAction === 'save' ? 'Saving…' : 'Save changes'}
-            </button>
-            <button
-              className="secondary-button"
-              disabled={isBusy}
-              onClick={cancelEditing}
-              type="button"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+        <CaptureEditForm
+          draft={draft}
+          isBusy={isBusy}
+          isSaving={pendingAction === 'save'}
+          onCancel={cancelEditing}
+          onChange={updateDraft}
+          onSubmit={(event) => void handleSave(event)}
+        />
       ) : (
-        <div className="capture-reading-surface">
-          <article className="capture-reader" aria-label={capture.kind + ' content'}>
-            {(capture.kind === 'note' || capture.kind === 'image') &&
-              (capture.content ? (
-                <div className="capture-reader-content">{capture.content}</div>
-              ) : (
-                <p className="capture-reader-empty">No note text.</p>
-              ))}
-            {capture.kind === 'link' && capture.source_url && (
-              <a
-                className="capture-reader-link"
-                href={capture.source_url}
-                rel="noreferrer"
-                target="_blank"
+        <>
+          <CaptureBody
+            content={capture.content}
+            kind={capture.kind}
+            sourceUrl={capture.source_url}
+          />
+
+          <ActionBar label="Organize">
+            {capture.status !== 'archived' && (
+              <button
+                className="btn btn--secondary btn--lg"
+                disabled={isBusy}
+                onClick={() => void changeStatus('archived')}
+                type="button"
               >
-                {capture.source_url}
-              </a>
+                <Archive aria-hidden="true" className="icon" />
+                {pendingAction === 'archived' ? 'Archiving…' : 'Archive'}
+              </button>
             )}
-          </article>
-        </div>
+            {capture.status === 'inbox' ? (
+              <button
+                className="btn btn--primary btn--lg action-bar__main"
+                disabled={isBusy}
+                onClick={() => void changeStatus('reviewed')}
+                type="button"
+              >
+                <Check aria-hidden="true" className="icon" />
+                {pendingAction === 'reviewed' ? 'Saving…' : 'Mark reviewed'}
+              </button>
+            ) : (
+              <button
+                className="btn btn--primary btn--lg action-bar__main"
+                disabled={isBusy}
+                onClick={() => void changeStatus('inbox')}
+                type="button"
+              >
+                <RotateCcw aria-hidden="true" className="icon" />
+                {pendingAction === 'inbox' ? 'Saving…' : 'Restore to inbox'}
+              </button>
+            )}
+          </ActionBar>
+        </>
       )}
 
-      <div hidden={isEditing}>
-        <section className="lifecycle-panel" aria-labelledby="lifecycle-heading">
-          <div className="lifecycle-heading">
-            <div>
-              <p className="section-kicker">Next step</p>
-              <h2 id="lifecycle-heading">Organize</h2>
-            </div>
-            <div className="form-actions">
-              {capture.status === 'inbox' && (
-                <button
-                  className="secondary-button lifecycle-action"
-                  disabled={isBusy}
-                  onClick={() => void changeStatus('reviewed')}
-                  type="button"
-                >
-                  <CaptureActionIcon name="review" />
-                  Mark reviewed
-                </button>
-              )}
-              {capture.status !== 'inbox' && (
-                <button
-                  className="secondary-button lifecycle-action"
-                  disabled={isBusy}
-                  onClick={() => void changeStatus('inbox')}
-                  type="button"
-                >
-                  <CaptureActionIcon name="restore" />
-                  Restore to inbox
-                </button>
-              )}
-              {capture.status !== 'archived' && (
-                <button
-                  className="secondary-button lifecycle-action"
-                  disabled={isBusy}
-                  onClick={() => void changeStatus('archived')}
-                  type="button"
-                >
-                  <CaptureActionIcon name="archive" />
-                  Archive
-                </button>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className="danger-zone" aria-labelledby="delete-heading">
-          <h2 id="delete-heading">Delete capture</h2>
-          <p>This permanently removes this capture. This action cannot be undone.</p>
-          {isConfirmingDelete ? (
-            <div className="confirmation-panel">
-              <strong>Are you sure?</strong>
-              <div className="form-actions">
-                <button
-                  className="danger-button"
-                  disabled={isBusy}
-                  onClick={() => void deleteCapture()}
-                  type="button"
-                >
-                  {pendingAction === 'delete' ? 'Deleting…' : 'Delete permanently'}
-                </button>
-                <button
-                  className="secondary-button"
-                  disabled={isBusy}
-                  onClick={() => setIsConfirmingDelete(false)}
-                  type="button"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              className="danger-button"
-              disabled={isBusy}
-              onClick={() => setIsConfirmingDelete(true)}
-              type="button"
-            >
-              Delete…
-            </button>
-          )}
-        </section>
-      </div>
+      {isConfirmingDelete && (
+        <DeleteSheet
+          isDeleting={pendingAction === 'delete'}
+          isImage={capture.kind === 'image'}
+          onCancel={() => setIsConfirmingDelete(false)}
+          onConfirm={() => void deleteCapture()}
+        />
+      )}
     </section>
   );
 }
 
-function CaptureActionIcon({
-  name,
+function IconButton({
+  disabled = false,
+  icon: Icon,
+  label,
+  onClick,
 }: {
-  name: 'archive' | 'back' | 'copy' | 'edit' | 'restore' | 'review';
+  disabled?: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
 }) {
   return (
-    <svg aria-hidden="true" className="capture-action-icon" fill="none" viewBox="0 0 24 24">
-      {name === 'edit' && <path d="m5 19 3.8-.8L18 9l-3-3-9.2 9.2L5 19Zm8.5-11.5 3 3" />}
-      {name === 'copy' && (
-        <>
-          <rect height="11" rx="1.5" width="9" x="9" y="8" />
-          <path d="M15 8V6.5A1.5 1.5 0 0 0 13.5 5h-7A1.5 1.5 0 0 0 5 6.5v9A1.5 1.5 0 0 0 6.5 17H9" />
-        </>
-      )}
-      {name === 'back' && <path d="m10 6-6 6 6 6m-6-6h16" />}
-      {name === 'review' && <path d="m5 12 4 4L19 6" />}
-      {name === 'restore' && (
-        <>
-          <path d="M4 7v5h5" />
-          <path d="M5.5 11a7 7 0 1 1 2 6" />
-        </>
-      )}
-      {name === 'archive' && (
-        <>
-          <path d="M5 8h14v11H5V8Z" />
-          <path d="M4 5h16v3H4V5Zm6 7h4" />
-        </>
-      )}
-    </svg>
+    <button
+      aria-label={label}
+      className="icon-btn"
+      disabled={disabled}
+      onClick={onClick}
+      title={label}
+      type="button"
+    >
+      <Icon aria-hidden="true" className="icon" />
+    </button>
   );
 }

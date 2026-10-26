@@ -1,0 +1,320 @@
+/* Forms: composer, kind switch, fields, image picker and sign-in. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.field__label {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font: var(--text-label);
+}
+
+.field__optional {
+  color: var(--ink-3);
+  font: var(--text-meta);
+}
+
+.input {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0 var(--space-4);
+  border: var(--rule-hair) solid var(--field-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  color: var(--ink);
+  background: var(--surface);
+  font: var(--text-body);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.input:focus {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.input:disabled {
+  opacity: 0.6;
+}
+
+.input-icon {
+  position: relative;
+  display: block;
+}
+
+.input-icon .icon {
+  position: absolute;
+  top: 50%;
+  left: var(--space-4);
+  color: var(--ink-3);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.input-icon .input {
+  padding-left: 2.75rem;
+}
+
+/* ---------- Composer (new capture and edit) ---------- */
+
+.composer {
+  display: flex;
+  flex-direction: column;
+}
+
+.composer__title,
+.composer__body {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  color: var(--ink);
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.composer__title {
+  padding: var(--space-4) 0 var(--space-3);
+  font: var(--text-headline);
+  letter-spacing: var(--tracking-tight);
+}
+
+.composer__body {
+  min-height: 14rem;
+  padding: var(--space-4) 0;
+  border-top: var(--rule-hair) solid var(--rule);
+  font: var(--text-body-lg);
+  resize: vertical;
+}
+
+.composer__body--short {
+  min-height: 8rem;
+  margin-top: var(--space-5);
+}
+
+.composer__title::placeholder,
+.composer__body::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
+}
+
+/* The writing surfaces have no box, so show focus with the rule instead of a ring. */
+.composer__title:focus-visible,
+.composer__body:focus-visible {
+  outline: none;
+}
+
+.composer__body:focus {
+  border-top-color: var(--ink);
+}
+
+.composer__title:disabled,
+.composer__body:disabled {
+  opacity: 0.6;
+}
+
+/* ---------- Kind switch (segmented control) ---------- */
+
+.segmented {
+  display: flex;
+  gap: var(--space-1);
+  margin: var(--space-4) 0 var(--space-2);
+  padding: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
+.segmented__option {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-height: var(--tap);
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: calc(var(--radius-md) - 0.125rem);
+  color: var(--ink-2);
+  font: var(--text-label);
+  cursor: pointer;
+}
+
+/* State comes from classes set in React, not :has(), for old WebViews. */
+.segmented__option--checked {
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow:
+    var(--shadow-segment),
+    0 0 0 1px var(--rule);
+}
+
+.segmented__option--focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.segmented__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- Image picker ---------- */
+
+.picker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-8) var(--space-4);
+  border: 1.5px dashed var(--field-border);
+  border-radius: var(--radius-lg);
+  color: var(--ink-2);
+  text-align: center;
+  cursor: pointer;
+}
+
+.picker:hover {
+  background: var(--bg-sunken);
+}
+
+.picker--disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.picker__icon {
+  display: inline-flex;
+  width: 3rem;
+  height: 3rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  color: var(--ink);
+  background: var(--bg-sunken);
+}
+
+.picker__label {
+  color: var(--ink);
+  font: var(--text-label);
+}
+
+.picker__hint {
+  color: var(--ink-3);
+  font: var(--text-meta);
+}
+
+/* The real input covers the whole tile, so the tile is the tap target and keeps focus. */
+.picker__input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.picker__input:disabled {
+  cursor: not-allowed;
+}
+
+.picker--focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.preview {
+  margin-top: var(--space-4);
+}
+
+.preview img {
+  display: block;
+  width: 100%;
+  max-height: 22rem;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+  background: var(--bg-sunken);
+}
+
+.preview figcaption {
+  margin-top: var(--space-2);
+  color: var(--ink-3);
+  font: var(--text-meta);
+  overflow-wrap: anywhere;
+}
+
+.saved {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-10) 0;
+}
+
+.saved__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+/* ---------- Sign in ---------- */
+
+.auth {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--gutter) + var(--safe-top)) var(--gutter)
+    calc(var(--gutter) + var(--safe-bottom));
+}
+
+@supports (min-height: 100dvh) {
+  .auth {
+    min-height: 100dvh;
+  }
+}
+
+.auth__card {
+  width: min(24rem, 100%);
+}
+
+.auth__rule {
+  margin: var(--space-4) 0 var(--space-8);
+  border: 0;
+  border-top: var(--rule-heavy) solid var(--rule-strong);
+}
+
+.auth__card .page-title {
+  margin-bottom: var(--space-2);
+}
+
+.auth__form {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-2);
+}
+
+.auth__form .btn {
+  margin-top: var(--space-6);
+}
+
+.auth__foot {
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+  border-top: var(--rule-hair) solid var(--rule);
+  color: var(--ink-3);
+  font: var(--text-meta);
+}

@@ -1,5 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -229,14 +229,21 @@ describe('capture detail', () => {
 
     await screen.findByText('Original note');
 
-    expect(screen.getByRole('button', { name: 'Edit' })).toHaveClass('capture-icon-button');
-    expect(screen.getByRole('button', { name: 'Copy content' })).toHaveClass('capture-icon-button');
-    expect(screen.getByRole('link', { name: 'Back to inbox' })).toHaveClass('capture-icon-button');
-    expect(document.querySelectorAll('.capture-back-link .capture-action-icon')).toHaveLength(1);
-    expect(document.querySelectorAll('.capture-header-actions .capture-action-icon')).toHaveLength(
-      2,
-    );
-    expect(document.querySelectorAll('.lifecycle-panel .capture-action-icon')).toHaveLength(2);
+    const back = screen.getByRole('link', { name: 'Back to inbox' });
+    expect(back).toHaveAttribute('href', '/inbox');
+    expect(back.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+
+    // Icon-only header actions keep a visible-on-hover title and a real accessible name.
+    for (const name of ['Copy content', 'Edit', 'Delete']) {
+      const button = screen.getByRole('button', { name });
+      expect(button).toHaveClass('icon-btn');
+      expect(button).toHaveAttribute('title', name);
+      expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    }
+
+    const actions = screen.getByRole('group', { name: 'Organize' });
+    expect(within(actions).getByRole('button', { name: 'Archive' })).toBeEnabled();
+    expect(within(actions).getByRole('button', { name: 'Mark reviewed' })).toBeEnabled();
   });
 
   it('copies the text attached to an image capture', async () => {
@@ -326,7 +333,7 @@ describe('capture detail', () => {
 
     expect(await screen.findByRole('img', { name: 'Private receipt' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remove image' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replace image' }));
 
     expect(screen.queryByRole('img', { name: 'Private receipt' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Replacement image')).toBeInTheDocument();
@@ -362,7 +369,7 @@ describe('capture detail', () => {
 
     await screen.findByRole('img', { name: 'Private receipt' });
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remove image' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replace image' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -411,7 +418,7 @@ describe('capture detail', () => {
 
     await screen.findByRole('img', { name: 'Private receipt' });
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remove image' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replace image' }));
     fireEvent.change(screen.getByLabelText('Replacement image'), {
       target: { files: [replacement] },
     });
@@ -480,13 +487,32 @@ describe('capture detail', () => {
     renderDetail(client);
 
     await screen.findByRole('heading', { name: 'A useful thought' });
-    fireEvent.click(screen.getByRole('button', { name: 'Delete…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     expect(deleteCall).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
 
     await waitFor(() => expect(deleteCall).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('heading', { name: 'Inbox destination' })).toBeVisible();
+  });
+
+  it('focuses Cancel in the delete sheet and closes it with Escape', async () => {
+    const { client, deleteCall } = createDetailClient();
+    renderDetail(client);
+
+    await screen.findByRole('heading', { name: 'A useful thought' });
+    const trigger = screen.getByRole('button', { name: 'Delete' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const sheet = screen.getByRole('alertdialog');
+    expect(within(sheet).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(deleteCall).not.toHaveBeenCalled();
   });
 
   it('removes image Storage before deleting its database records', async () => {
@@ -509,7 +535,7 @@ describe('capture detail', () => {
     renderDetail(client);
 
     await screen.findByRole('img', { name: 'Private receipt' });
-    fireEvent.click(screen.getByRole('button', { name: 'Delete…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
 
     await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
@@ -580,11 +606,12 @@ describe('capture detail', () => {
     renderDetail(client);
 
     await screen.findByRole('img', { name: 'A useful thought' });
-    fireEvent.click(screen.getByRole('button', { name: 'Delete…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Nothing else was deleted');
     expect(rpc).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'A useful thought' })).toBeVisible();
   });
   it('also removes stray objects in the capture folder before deleting records', async () => {
@@ -609,7 +636,7 @@ describe('capture detail', () => {
     renderDetail(client);
 
     await screen.findByRole('img', { name: 'Private receipt' });
-    fireEvent.click(screen.getByRole('button', { name: 'Delete…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
 
     await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
