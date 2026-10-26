@@ -1103,3 +1103,22 @@ main:focus {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Search (functional styling only; visual design is pending review). */
+.capture-search {
+  margin-bottom: 1rem;
+}
+
+.capture-search input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+.search-highlight {
+  border-radius: 0.2rem;
+  color: inherit;
+  background: rgba(255, 157, 131, 0.32);
+}
+
+.capture-card p.search-snippet {
+  white-space: normal;
+}

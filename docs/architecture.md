@@ -200,6 +200,19 @@ application responsibility. The approved `202607240002_image_capture_functions.s
 applied on 2026-07-24 and adds authenticated, RLS-respecting transaction boundaries for finalizing
 image metadata and deleting image records only after Storage removal.
 
+## Search
+
+The search box on the Inbox, Reviewed and Archived pages searches every capture the signed-in user
+owns, whatever its status. Typing is debounced (250 ms) and the committed query lives in `?q=`.
+Keyboard: `/` focuses the box, Escape clears it, the arrow keys move between the box and results.
+Matches are highlighted with `<mark>` text nodes (never HTML); image notes stay hidden in results.
+
+`202610260001_search_captures.sql` adds `public.search_captures(p_query, p_limit)`, a
+security-invoker function that reuses the `captures_search_idx` GIN expression with prefix terms,
+returns at most 100 rows, and only reads the caller's own rows. **It is not applied yet**: apply it
+with `supabase db push` after review. Until then the client detects the missing function and falls
+back to an escaped all-terms `ilike` search over title, content and link (slower, substring only).
+
 ## Delivery constraints
 
 Database migrations remain versioned and reviewable. The approved initial migration was applied to
