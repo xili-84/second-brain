@@ -1,0 +1,137 @@
+/*
+ * Second Brain design tokens: the "Editorial" direction.
+ *
+ * Components use only these custom properties, never raw colours or sizes, so a theme change is a
+ * token change. Light is the default; dark follows the system setting.
+ *
+ * Compatibility: the Huawei WebView can be old, so tokens avoid color-mix(), relative colours and
+ * other recent syntax. Translucent "glass" bars have a solid fallback (see base.css).
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Typeface: Inter Variable is bundled by @fontsource-variable/inter (see base.css). */
+  --font-sans:
+    'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /* Type scale (weight size/line-height). Mobile first; the desktop query enlarges the top end. */
+  --text-display: 700 2rem/2.25rem var(--font-sans); /* 32/36 page titles */
+  --text-headline: 700 1.75rem/2.125rem var(--font-sans); /* 28/34 capture headline */
+  --text-title: 650 1.0625rem/1.375rem var(--font-sans); /* 17/22 list titles */
+  --text-body-lg: 400 1.0625rem/1.75rem var(--font-sans); /* 17/28 reading text */
+  --text-body: 400 1rem/1.5rem var(--font-sans); /* 16/24 interface text */
+  --text-small: 400 0.9375rem/1.375rem var(--font-sans); /* 15/22 excerpts */
+  --text-label: 600 0.9375rem/1.25rem var(--font-sans); /* 15/20 buttons, labels */
+  --text-meta: 500 0.8125rem/1.125rem var(--font-sans); /* 13/18 dates, counts */
+  --text-kicker: 700 0.75rem/1rem var(--font-sans); /* 12/16 section labels (caps) */
+  --text-tab: 600 0.6875rem/0.875rem var(--font-sans); /* 11/14 bottom tab labels */
+  --tracking-tight: -0.022em;
+  --tracking-title: -0.012em;
+  --tracking-kicker: 0.08em;
+
+  /* Spacing: 4px base. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --gutter: var(--space-5);
+
+  /* Shape. */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-full: 999px;
+  --rule-hair: 1px;
+  --rule-heavy: 3px;
+
+  /* Sizing. */
+  --tap: 2.75rem; /* 44px minimum touch target */
+  --bar-h: 3.25rem; /* top bars */
+  --tabbar-h: 3.75rem;
+  --action-bar-h: 4.75rem;
+  --measure: 42rem; /* reading and list column */
+  --thumb: 4.75rem;
+
+  /*
+   * Safe areas. Capacitor 8 (SystemBars insetsHandling "css") injects --safe-area-inset-*;
+   * browsers expose env(); old WebViews get 0.
+   */
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+
+  /* Motion. */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur: 140ms;
+
+  /* Colour: light ("newsprint"). Contrast ratios are against --bg. */
+  --bg: #ffffff;
+  --bg-glass: rgba(255, 255, 255, 0.92);
+  --bg-sunken: #f5f5f3;
+  --surface: #ffffff;
+  --ink: #111111; /* 18.9:1 */
+  --ink-2: #474747; /* 9.3:1 secondary text */
+  --ink-3: #6b6b6b; /* 5.3:1 meta (4.9:1 on --bg-sunken) */
+  --rule: #e4e4e1;
+  --rule-strong: #111111;
+  --field-border: #8f8f8f; /* 3.2:1 non-text contrast */
+  --accent: #c8102e; /* 5.9:1 newsroom red: kickers and active states only */
+  --primary: #111111; /* primary buttons are ink, not accent */
+  --on-primary: #ffffff;
+  --success: #0b6e3a;
+  --success-soft: #e7f4ec;
+  --danger: #c8102e;
+  --danger-soft: #fbe9ec;
+  --on-danger: #ffffff;
+  --highlight: #ffe58a; /* search matches */
+  --focus: #1f5fd6;
+  --scrim: rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 0.5rem 2rem rgba(0, 0, 0, 0.14);
+  --shadow-segment: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f0f10;
+    --bg-glass: rgba(15, 15, 16, 0.92);
+    --bg-sunken: #1b1b1d;
+    --surface: #18181a;
+    --ink: #f3f3f1; /* 17.2:1 */
+    --ink-2: #b9b9b5; /* 9.7:1 */
+    --ink-3: #8e8e8a; /* 5.8:1 (5.2:1 on --bg-sunken) */
+    --rule: #2a2a2c;
+    --rule-strong: #f3f3f1;
+    --field-border: #6c6c6c; /* 3.6:1 */
+    --accent: #ff5468; /* 6.1:1 */
+    --primary: #f3f3f1;
+    --on-primary: #0f0f10;
+    --success: #4cc985;
+    --success-soft: #10291c;
+    --danger: #ff5468;
+    --danger-soft: #3a1419;
+    --on-danger: #0f0f10;
+    --highlight: #5c4a00;
+    --focus: #7aa7ff;
+    --scrim: rgba(0, 0, 0, 0.6);
+    --shadow-pop: 0 0.5rem 2rem rgba(0, 0, 0, 0.5);
+    --shadow-segment: none;
+  }
+}
+
+@media (min-width: 48rem) {
+  :root {
+    --text-display: 700 2.5rem/2.75rem var(--font-sans); /* 40/44 */
+    --text-headline: 700 2.5rem/2.875rem var(--font-sans); /* 40/46 */
+    --text-title: 650 1.1875rem/1.5rem var(--font-sans); /* 19/24 */
+    --text-body-lg: 400 1.125rem/1.875rem var(--font-sans); /* 18/30 */
+    --gutter: var(--space-8);
+    --thumb: 6rem;
+  }
+}

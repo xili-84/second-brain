@@ -53,8 +53,8 @@ export default defineConfig(({ mode }) => ({
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        background_color: '#071a3d',
-        theme_color: '#071a3d',
+        background_color: '#ffffff',
+        theme_color: '#ffffff',
         icons: [
           {
             src: '/icons/icon-192.png',
@@ -72,6 +72,8 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         cleanupOutdatedCaches: true,
+        // Precache the Latin Inter subset so the type survives offline; other subsets load on demand.
+        globPatterns: ['**/*.{js,css,html}', 'assets/inter-latin-wght-normal-*.woff2'],
         navigateFallback: '/index.html',
         runtimeCaching: [],
       },
