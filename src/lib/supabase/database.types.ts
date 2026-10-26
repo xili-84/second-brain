@@ -172,6 +172,19 @@ export type Database = {
           created_capture_id: string;
         }[];
       };
+      search_captures: {
+        Args: { p_limit?: number; p_query: string };
+        Returns: {
+          content: string | null;
+          created_at: string;
+          id: string;
+          kind: string;
+          rank: number;
+          source_url: string | null;
+          status: string;
+          title: string | null;
+        }[];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
