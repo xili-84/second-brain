@@ -10,7 +10,7 @@ import {
 import type { EmbeddedCaptureTags } from '../tags/tagNames';
 
 export type CaptureSummary = LinkPreviewFields & {
-  attachments?: { storage_path: string }[];
+  attachments?: { created_at?: string | null; storage_path: string }[];
   capture_tags?: EmbeddedCaptureTags;
   content: string | null;
   created_at: string;
@@ -46,7 +46,7 @@ export function useCaptureList(
       client
         .from('captures')
         .select(
-          `id, kind, title, content, source_url, created_at, is_favorite, attachments(storage_path), capture_tags(tags(id, name))${previewColumns}`,
+          `id, kind, title, content, source_url, created_at, is_favorite, attachments(storage_path, created_at), capture_tags(tags(id, name))${previewColumns}`,
         )
         .eq('status', status)
         .order('created_at', { ascending: false }),

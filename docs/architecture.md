@@ -94,21 +94,26 @@ This provides eventual cleanup after connectivity returns. Literal instantaneous
 Storage and PostgreSQL is not available. The implementation must test every failure boundary before
 image capture is released.
 
-### Replacing a published image
+### Several images per capture
 
-A published image is replaced through the existing owner-scoped Storage and attachment policies;
-no schema change is required. The edit screen treats **Remove image** as a reversible local choice
-until the user selects a valid replacement and presses **Save changes**.
+An image capture holds 1 to 10 images (for example a 9:16 story and a square feed post). No schema
+or RPC change was needed: `attachments` already allows many rows per capture, and the owner-scoped
+attachment and Storage policies cover the extra rows and objects.
 
-1. Validate the replacement with the same JPEG, PNG, WebP, and 10 MiB rules used at capture time.
-2. Save any edited capture text, then upload the replacement under a fresh deterministic owner and
-   capture folder path with `upsert: false`.
-3. Update the existing owned attachment row to reference the new object and confirm the metadata
-   write, including checking the committed row after a lost response.
-4. Remove the old private object only after the attachment points to the new object.
-5. If upload or metadata replacement fails, retain the original attachment and selected replacement
-   for retry. Any unreferenced replacement object is removed immediately or by normal reconciliation.
-6. Canceling edit or choosing **Keep current image** makes no remote change.
+- **Order.** Images display oldest `attachments.created_at` first (ID as tie-breaker); the first
+  is the cover shown in lists with a "+N" badge. The client writes order as timestamps 1 ms apart.
+- **Creating.** All images upload in parallel (three at a time, `upsert: false`, every path inside
+  `{user_id}/{capture_id}/`). If any upload fails nothing is created; stored uploads are kept so a
+  retry uploads only the failures (an "already exists" reply counts as stored), or the user removes
+  them. Then `finalize_image_capture` creates the capture with the first image atomically, and the
+  other rows are inserted with timestamps after the cover. If that insert cannot be confirmed the
+  capture is still saved with its cover, the unattached objects are removed, and a warning says so.
+- **Editing.** New images upload first; any failure removes them again and changes nothing. Then
+  new rows are inserted, order timestamps updated, and removed rows deleted before their objects.
+  A capture always keeps at least one image. Leftover objects are unreferenced and are swept by
+  reconciliation.
+- **Cleanup marker.** The local pending marker lists every path of an attempt
+  (`additionalPaths`); reconciliation removes only the paths that no attachment references.
 
 ### Deleting an image capture
 
@@ -164,7 +169,9 @@ inbox retrieval, session restoration, and cross-device visibility.
 
 ## Post-Version-1 Android image extensions
 
-Milestone 4B extends the private handoff to single JPEG, PNG, and WebP `ACTION_SEND` image shares.
+Milestone 4B extends the private handoff to JPEG, PNG, and WebP `ACTION_SEND` image shares, and
+`ACTION_SEND_MULTIPLE` (up to 10 images, each checked on its own; skipped items are reported) turns
+several shared images into one draft.
 Android copies the temporary content URI immediately into app-private storage, enforces the 10 MiB
 limit, and exposes the copy to React in bounded chunks. React applies the existing image validation
 and upload workflow. The pending native image is cleared only after a confirmed save or explicit

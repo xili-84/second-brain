@@ -94,3 +94,51 @@ export async function removeCaptureImageObjects(
 
   return remaining.length === 0 ? null : new Error('Some private images could not be removed.');
 }
+
+export type StoredImageAttachment = {
+  created_at?: string | null;
+  id: string;
+  mime_type: string;
+  original_name: string;
+  size_bytes: number;
+  storage_path: string;
+};
+
+/** Columns every attachment read selects, so ordering and per-image saving always work. */
+export const ATTACHMENT_COLUMNS =
+  'id, storage_path, original_name, mime_type, size_bytes, created_at';
+
+/**
+ * Display order of a capture's images: oldest first (the first image is the cover), with the ID as
+ * a stable tie-breaker. Rows without a timestamp keep their relative order at the end.
+ */
+export function sortAttachments<T extends { created_at?: string | null; id?: string }>(
+  attachments: readonly T[] | null | undefined,
+): T[] {
+  const time = (value: string | null | undefined) => {
+    const parsed = value ? Date.parse(value) : Number.NaN;
+    return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+  };
+  return (attachments ?? [])
+    .map((attachment, index) => ({ attachment, index }))
+    .sort(
+      (a, b) =>
+        time(a.attachment.created_at) - time(b.attachment.created_at) ||
+        (a.attachment.id ?? '').localeCompare(b.attachment.id ?? '') ||
+        a.index - b.index,
+    )
+    .map(({ attachment }) => attachment);
+}
+
+/** A short signed link that makes the browser download the file under its original name. */
+export async function createImageDownloadUrl(
+  client: SecondBrainClient,
+  storagePath: string,
+  fileName: string,
+) {
+  const { data, error } = await client.storage
+    .from(IMAGE_BUCKET)
+    .createSignedUrl(storagePath, DOWNLOAD_URL_TTL_SECONDS, { download: fileName });
+
+  return error || !data?.signedUrl ? null : data.signedUrl;
+}

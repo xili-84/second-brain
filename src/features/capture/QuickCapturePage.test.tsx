@@ -98,10 +98,9 @@ describe('quick capture persistence', () => {
     expect(note.closest('label')).not.toHaveClass('segmented__option--checked');
 
     fireEvent.click(screen.getByRole('radio', { name: 'Image' }));
-    expect(screen.getByLabelText('Choose an image')).toHaveAttribute(
-      'accept',
-      'image/jpeg,image/png,image/webp',
-    );
+    const picker = screen.getByLabelText('Choose images');
+    expect(picker).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp');
+    expect(picker).toHaveAttribute('multiple');
     expect(screen.getByRole('textbox', { name: 'Note' })).toBeVisible();
   });
 

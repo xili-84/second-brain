@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import type { SecondBrainClient } from '../../lib/supabase/client';
 import { IMAGE_BUCKET } from '../capture/imageCapture';
-import { SIGNED_URL_TTL_SECONDS } from '../capture/imageStorage';
+import { SIGNED_URL_TTL_SECONDS, sortAttachments } from '../capture/imageStorage';
 import { LINK_PREVIEW_BUCKET } from '../linkPreview/linkPreview';
 import type { CaptureSummary } from './useCaptureList';
 
@@ -11,7 +11,7 @@ type ThumbnailSource = { bucket: string; path: string };
 /** Where a row's thumbnail comes from: an image capture's first attachment or a link preview. */
 export function thumbnailSource(capture: CaptureSummary): ThumbnailSource | null {
   if (capture.kind === 'image') {
-    const path = capture.attachments?.[0]?.storage_path;
+    const path = sortAttachments(capture.attachments)[0]?.storage_path;
     return path ? { bucket: IMAGE_BUCKET, path } : null;
   }
   if (capture.kind === 'link' && capture.link_image_path) {
@@ -20,12 +20,17 @@ export function thumbnailSource(capture: CaptureSummary): ThumbnailSource | null
   return null;
 }
 
+/** How many images an image capture holds (the list shows "+N" for the ones after the cover). */
+export function imageCount(capture: CaptureSummary) {
+  return capture.kind === 'image' ? (capture.attachments?.length ?? 0) : 0;
+}
+
 /** Key of a thumbnail in the map returned by useThumbnails. */
 export function thumbnailKey(source: ThumbnailSource) {
   return `${source.bucket}/${source.path}`;
 }
 
-/** The storage path of each image capture's first attachment, in list order. */
+/** The storage path of each image capture's cover (first) image, in list order. */
 export function thumbnailPaths(captures: CaptureSummary[]) {
   return captures.flatMap((capture) => {
     const source = thumbnailSource(capture);

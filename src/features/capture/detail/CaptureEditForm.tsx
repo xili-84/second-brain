@@ -10,6 +10,8 @@ type CaptureEditFormProps = {
   onCancel: () => void;
   onChange: (update: Partial<CaptureDraft>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  /** Shown on the save button while images upload, e.g. "Uploading 1 of 2…". */
+  savingLabel?: string | null;
 };
 
 /** Editing in place uses the composer styles: headline field, writing area, pinned actions. */
@@ -20,6 +22,7 @@ export function CaptureEditForm({
   onCancel,
   onChange,
   onSubmit,
+  savingLabel = null,
 }: CaptureEditFormProps) {
   const hasText = draft.kind === 'note' || draft.kind === 'image';
 
@@ -74,7 +77,7 @@ export function CaptureEditForm({
           disabled={isBusy}
           type="submit"
         >
-          {isSaving ? 'Saving…' : 'Save changes'}
+          {isSaving ? (savingLabel ?? 'Saving…') : 'Save changes'}
         </button>
       </ActionBar>
     </form>

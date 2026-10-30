@@ -146,23 +146,46 @@ const captures: Row[] = [
     content: null,
     created_at: hoursAgo(1200),
   },
+  {
+    id: id(),
+    kind: 'image',
+    status: 'inbox',
+    title: 'Launch post: story + feed image',
+    content: 'Story goes up at 9:00, feed post at 12:00. Same headline on both.',
+    source_url: null,
+    created_at: hoursAgo(1),
+    images: [
+      { img: 'story-9x16.jpg', size: 114739, mime: 'image/jpeg' },
+      { img: 'post-1x1.jpg', size: 73550, mime: 'image/jpeg' },
+    ],
+  },
 ];
 for (const c of captures) {
   c.user_id = USER_ID;
   c.updated_at = c.created_at;
   c.archived_at = null;
-  c.attachments = c.img
-    ? [
-        {
-          id: `a-${String(c.id)}`,
-          storage_path: `${USER_ID}/${String(c.id)}/${String(c.img)}`,
-          original_name:
-            c.img === 'screenshot.png' ? 'Screenshot_20261026_083012.png' : String(c.img),
-          mime_type: c.mime,
-          size_bytes: c.size,
-        },
-      ]
-    : [];
+  const images = c.images as { img: string; size: number; mime: string }[] | undefined;
+  c.attachments = images
+    ? images.map((image, index) => ({
+        id: `a-${String(c.id)}-${index}`,
+        storage_path: `${USER_ID}/${String(c.id)}/${image.img}`,
+        original_name: image.img,
+        mime_type: image.mime,
+        size_bytes: image.size,
+        created_at: new Date(Date.parse(String(c.created_at)) + index).toISOString(),
+      }))
+    : c.img
+      ? [
+          {
+            id: `a-${String(c.id)}`,
+            storage_path: `${USER_ID}/${String(c.id)}/${String(c.img)}`,
+            original_name:
+              c.img === 'screenshot.png' ? 'Screenshot_20261026_083012.png' : String(c.img),
+            mime_type: c.mime,
+            size_bytes: c.size,
+          },
+        ]
+      : [];
 }
 
 // Link previews, as the link-preview Edge Function would store them.
@@ -232,6 +255,7 @@ const seedTags: Record<number, string[]> = {
   7: ['Design'],
   8: ['Reels', 'Ideas'],
   9: ['okdaily'],
+  14: ['okdaily', 'Reels'],
 };
 captures.forEach((capture, index) => {
   capture.is_favorite = [2, 3, 10].includes(index + 1);

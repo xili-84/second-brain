@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { loadPendingSharedImage, type PendingSharedImage } from './nativeShare';
+import {
+  loadPendingSharedImage,
+  pendingSharedImages,
+  type PendingShare,
+  type PendingSharedImage,
+} from './nativeShare';
 
 function readText(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -57,5 +62,32 @@ describe('native shared image handoff', () => {
     await expect(loadPendingSharedImage('share-id', pendingImage, readChunk)).rejects.toThrow(
       'incomplete',
     );
+  });
+
+  it('reads chunks of a multi-image share by index', async () => {
+    const readChunk = vi
+      .fn()
+      .mockResolvedValue({ complete: true, data: btoa('png!'), nextOffset: 4 });
+
+    await loadPendingSharedImage('share-id', { ...pendingImage, index: 2 }, readChunk);
+
+    expect(readChunk).toHaveBeenCalledWith({ id: 'share-id', index: 2, offset: 0 });
+  });
+
+  it('lists every shared image, or the single image of older app builds', () => {
+    const base: PendingShare = {
+      id: 's',
+      kind: 'image',
+      receivedAt: '2026-10-30T10:00:00.000Z',
+      text: '',
+      title: '',
+    };
+    const second = { ...pendingImage, index: 1, name: 'second.png' };
+
+    expect(pendingSharedImages({ ...base, image: pendingImage })).toEqual([pendingImage]);
+    expect(
+      pendingSharedImages({ ...base, image: pendingImage, images: [pendingImage, second] }),
+    ).toEqual([pendingImage, second]);
+    expect(pendingSharedImages(base)).toEqual([]);
   });
 });

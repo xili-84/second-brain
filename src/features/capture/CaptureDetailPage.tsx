@@ -4,6 +4,7 @@ import {
   Check,
   Copy,
   Download,
+  LoaderCircle,
   Pencil,
   RotateCcw,
   Trash2,
@@ -25,16 +26,24 @@ import {
   type CaptureStatus,
 } from './captureLifecycle';
 import { validateCaptureDraft, type CaptureDraft, type CaptureKind } from './captureDraft';
-import { validateImageFile } from './imageCapture';
-import { replaceImageAttachment, type StoredImageAttachment } from './imageReplacement';
-import { createImageSignedUrl, DOWNLOAD_URL_TTL_SECONDS } from './imageStorage';
+import { applyImageEdits, hasImageChanges, type EditedImage } from './imageEdits';
+import {
+  ATTACHMENT_COLUMNS,
+  createImageDownloadUrl,
+  createImageSignedUrl,
+  DOWNLOAD_URL_TTL_SECONDS,
+  sortAttachments,
+  type StoredImageAttachment,
+} from './imageStorage';
 import { deleteCapture } from './deleteCapture';
 import { ArticleHeader } from './detail/ArticleHeader';
 import { CaptureBody } from './detail/CaptureBody';
 import { CaptureEditForm } from './detail/CaptureEditForm';
-import { CaptureImage } from './detail/CaptureImage';
 import { DeleteSheet } from './detail/DeleteSheet';
-import { ImageReplacement } from './detail/ImageReplacement';
+import { ImageGallery, type GalleryImage, type ImageSize } from './images/ImageGallery';
+import { ImageTray } from './images/ImageTray';
+import { ImageViewer } from './images/ImageViewer';
+import { storedDrafts, useImageDrafts } from './images/useImageDrafts';
 import { isNativeImageSaveAvailable, saveImageToPhone } from './nativeImageSaver';
 import { FavoriteButton } from '../tags/FavoriteButton';
 import { TagEditor } from '../tags/TagEditor';
@@ -56,6 +65,27 @@ type CaptureRecord = LinkPreviewFields & {
   title: string | null;
   updated_at: string;
 };
+
+const IMAGE_LOAD_ERROR = 'The private image could not be loaded. Check your connection and retry.';
+
+function withSortedAttachments<T extends { attachments?: StoredImageAttachment[] | null }>(
+  record: T,
+): T & { attachments: StoredImageAttachment[] } {
+  return { ...record, attachments: sortAttachments(record.attachments) };
+}
+
+async function signAll(
+  client: Parameters<typeof createImageSignedUrl>[0],
+  attachments: StoredImageAttachment[],
+) {
+  const entries = await Promise.all(
+    attachments.map(
+      async (attachment) =>
+        [attachment.id, await createImageSignedUrl(client, attachment.storage_path)] as const,
+    ),
+  );
+  return Object.fromEntries(entries) as Record<string, string | null>;
+}
 
 function isSupportedKind(kind: string): kind is CaptureKind {
   return kind === 'note' || kind === 'link' || kind === 'image';
@@ -120,16 +150,18 @@ export function CaptureDetailPage() {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageUrls, setImageUrls] = useState<Record<string, string | null>>({});
   const [imageError, setImageError] = useState<string | null>(null);
+  const [imageSizes, setImageSizes] = useState<Record<string, ImageSize>>({});
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [isReplacingImage, setIsReplacingImage] = useState(false);
-  const [replacementImage, setReplacementImage] = useState<File | null>(null);
-  const [isValidatingReplacement, setIsValidatingReplacement] = useState(false);
-  const [isSavingToPhone, setIsSavingToPhone] = useState(false);
-  const [hasSavedToPhone, setHasSavedToPhone] = useState(false);
+  const drafts = useImageDrafts();
+  const [savingImageId, setSavingImageId] = useState<string | null>(null);
+  const [savedImageIds, setSavedImageIds] = useState<ReadonlySet<string>>(new Set());
   const isSavingToPhoneRef = useRef(false);
-  const imageRefreshAttempted = useRef(false);
+  /** Attachment IDs whose link was already re-signed once after a load error. */
+  const imageRefreshAttempted = useRef(new Set<string>());
 
   const loadCapture = useCallback(async () => {
     if (!captureId || !userId) {
@@ -137,20 +169,19 @@ export function CaptureDetailPage() {
     }
 
     setIsLoading(true);
-    setHasSavedToPhone(false);
-    setIsSavingToPhone(false);
-    setIsReplacingImage(false);
-    setReplacementImage(null);
-    setIsValidatingReplacement(false);
+    setSavedImageIds(new Set());
+    setSavingImageId(null);
     isSavingToPhoneRef.current = false;
-    imageRefreshAttempted.current = false;
+    imageRefreshAttempted.current = new Set();
+    setGalleryIndex(0);
+    setViewerIndex(null);
     setError(null);
 
     const { data: loaded, error: loadError } = await selectWithPreview((previewColumns) =>
       client
         .from('captures')
         .select(
-          `id, kind, status, title, content, source_url, created_at, updated_at, is_favorite, attachments(id, storage_path, original_name, mime_type, size_bytes), capture_tags(tags(id, name))${previewColumns}`,
+          `id, kind, status, title, content, source_url, created_at, updated_at, is_favorite, attachments(${ATTACHMENT_COLUMNS}), capture_tags(tags(id, name))${previewColumns}`,
         )
         .eq('id', captureId)
         .eq('user_id', userId)
@@ -161,32 +192,25 @@ export function CaptureDetailPage() {
     if (loadError || !data || !isSupportedKind(data.kind) || !isSupportedStatus(data.status)) {
       setCapture(null);
       setDraft(null);
-      setImageUrl(null);
+      setImageUrls({});
       setImageError(null);
       setIsEditing(false);
       setError('This capture could not be loaded. It may have been deleted.');
     } else {
-      setCapture(data);
-      setDraft(toDraft(data));
+      const record = withSortedAttachments(data);
+      setCapture(record);
+      setDraft(toDraft(record));
       setIsEditing(false);
-      setImageUrl(null);
+      setImageUrls({});
       setImageError(null);
 
-      if (data.kind === 'image') {
-        const imagePath = data.attachments[0]?.storage_path;
-
-        if (!imagePath) {
+      if (record.kind === 'image') {
+        if (record.attachments.length === 0) {
           setImageError('This image capture is incomplete. You can delete it and try again.');
         } else {
-          const signedUrl = await createImageSignedUrl(client, imagePath);
-
-          if (!signedUrl) {
-            setImageError(
-              'The private image could not be loaded. Check your connection and retry.',
-            );
-          } else {
-            setImageUrl(signedUrl);
-          }
+          const urls = await signAll(client, record.attachments);
+          setImageUrls(urls);
+          setImageError(Object.values(urls).some((url) => !url) ? IMAGE_LOAD_ERROR : null);
         }
       }
     }
@@ -198,33 +222,49 @@ export function CaptureDetailPage() {
     void loadCapture();
   }, [loadCapture]);
 
-  /** Signed links expire; re-sign once when the browser reports the image failed to load. */
+  /** Signed links expire; re-sign an image once when the browser reports it failed to load. */
   const refreshImageUrl = useCallback(
-    async (isManualRetry = false) => {
-      const imagePath = capture?.kind === 'image' ? capture.attachments[0]?.storage_path : null;
+    async (attachmentId: string) => {
+      const attachment = capture?.attachments.find((item) => item.id === attachmentId);
 
-      if (!imagePath || (!isManualRetry && imageRefreshAttempted.current)) {
-        if (!isManualRetry) {
-          setImageUrl(null);
-          setImageError('The private image could not be loaded. Check your connection and retry.');
-        }
-
+      if (!attachment || imageRefreshAttempted.current.has(attachmentId)) {
+        setImageUrls((current) => ({ ...current, [attachmentId]: null }));
+        setImageError(IMAGE_LOAD_ERROR);
         return;
       }
 
-      imageRefreshAttempted.current = true;
-      setImageError(null);
-      const signedUrl = await createImageSignedUrl(client, imagePath);
-
-      if (signedUrl) {
-        setImageUrl(signedUrl);
-      } else {
-        setImageUrl(null);
-        setImageError('The private image could not be loaded. Check your connection and retry.');
+      imageRefreshAttempted.current.add(attachmentId);
+      const signedUrl = await createImageSignedUrl(client, attachment.storage_path);
+      setImageUrls((current) => ({ ...current, [attachmentId]: signedUrl }));
+      if (!signedUrl) {
+        setImageError(IMAGE_LOAD_ERROR);
       }
     },
     [capture, client],
   );
+
+  /** Manual Retry: re-sign every image that is not showing. */
+  const retryImages = useCallback(async () => {
+    if (!capture) {
+      return;
+    }
+    const missing = capture.attachments.filter((attachment) => !imageUrls[attachment.id]);
+    setImageError(null);
+    const urls = await signAll(client, missing);
+    missing.forEach((attachment) => imageRefreshAttempted.current.delete(attachment.id));
+    setImageUrls((current) => ({ ...current, ...urls }));
+    if (Object.values(urls).some((url) => !url)) {
+      setImageError(IMAGE_LOAD_ERROR);
+    }
+  }, [capture, client, imageUrls]);
+
+  const recordSize = useCallback((attachmentId: string, size: ImageSize) => {
+    setImageSizes((current) =>
+      current[attachmentId]?.width === size.width && current[attachmentId]?.height === size.height
+        ? current
+        : { ...current, [attachmentId]: size },
+    );
+  }, []);
 
   function updateDraft(update: Partial<CaptureDraft>) {
     setDraft((current) => (current ? { ...current, ...update } : current));
@@ -240,8 +280,7 @@ export function CaptureDetailPage() {
     setDraft(toDraft(capture));
     setError(null);
     setMessage(null);
-    setIsReplacingImage(false);
-    setReplacementImage(null);
+    drafts.reset(capture.kind === 'image' ? storedDrafts(capture.attachments, imageUrls) : []);
     setIsEditing(true);
   }
 
@@ -252,51 +291,23 @@ export function CaptureDetailPage() {
 
     setError(null);
     setMessage(null);
-    setIsReplacingImage(false);
-    setReplacementImage(null);
-    setIsValidatingReplacement(false);
+    drafts.reset([]);
     setIsEditing(false);
   }
 
-  function beginImageReplacement() {
+  async function addImages(files: File[]) {
     setError(null);
     setMessage(null);
-    setIsReplacingImage(true);
-    setReplacementImage(null);
-  }
-
-  function undoImageReplacement() {
-    setError(null);
-    setMessage(null);
-    setIsReplacingImage(false);
-    setReplacementImage(null);
-  }
-
-  async function chooseReplacementImage(file: File | null) {
-    setError(null);
-    setMessage(null);
-    setReplacementImage(null);
-
-    if (!file) {
-      return;
+    const { rejected } = await drafts.addFiles(files);
+    if (rejected.length) {
+      setError(rejected.join(' '));
     }
-
-    setIsValidatingReplacement(true);
-    const validationError = await validateImageFile(file);
-    setIsValidatingReplacement(false);
-
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
-    setReplacementImage(file);
   }
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!capture || !draft || !session || pendingAction || isValidatingReplacement || !isEditing) {
+    if (!capture || !draft || !session || pendingAction || drafts.isValidating || !isEditing) {
       return;
     }
 
@@ -307,22 +318,19 @@ export function CaptureDetailPage() {
       return;
     }
 
-    const currentAttachment = capture.kind === 'image' ? capture.attachments[0] : undefined;
+    const editedImages: EditedImage[] = drafts.images.flatMap((image): EditedImage[] =>
+      image.attachment
+        ? [{ attachment: image.attachment, key: image.key, kind: 'stored' }]
+        : image.file
+          ? [{ file: image.file, key: image.key, kind: 'new' }]
+          : [],
+    );
+    const imagesChanged =
+      capture.kind === 'image' && hasImageChanges(capture.attachments, editedImages);
 
-    if (isReplacingImage && (!currentAttachment || !replacementImage)) {
-      setError('Choose a replacement image before saving, or undo the removal.');
+    if (capture.kind === 'image' && editedImages.length === 0) {
+      setError('Keep at least one image, or delete the capture instead.');
       return;
-    }
-
-    if (isReplacingImage && replacementImage) {
-      setIsValidatingReplacement(true);
-      const replacementValidationError = await validateImageFile(replacementImage);
-      setIsValidatingReplacement(false);
-
-      if (replacementValidationError) {
-        setError(replacementValidationError);
-        return;
-      }
     }
 
     setError(null);
@@ -341,7 +349,7 @@ export function CaptureDetailPage() {
       .eq('id', capture.id)
       .eq('user_id', session.user.id)
       .select(
-        'id, kind, status, title, content, source_url, created_at, updated_at, attachments(id, storage_path, original_name, mime_type, size_bytes)',
+        `id, kind, status, title, content, source_url, created_at, updated_at, attachments(${ATTACHMENT_COLUMNS})`,
       )
       .single();
 
@@ -349,46 +357,60 @@ export function CaptureDetailPage() {
       setError(
         'Changes were not saved. Your edits are still here—check your connection and retry.',
       );
-    } else if (isReplacingImage && currentAttachment && replacementImage) {
-      const replacementResult = await replaceImageAttachment(
+    } else if (imagesChanged) {
+      const textSaved = withSortedAttachments({ ...capture, ...data });
+      drafts.setStatuses(
+        Object.fromEntries(
+          editedImages
+            .filter((image) => image.kind === 'new')
+            .map((image) => [image.key, undefined]),
+        ),
+      );
+      const result = await applyImageEdits(
         client,
         session.user.id,
         capture.id,
-        currentAttachment,
-        replacementImage,
+        capture.attachments,
+        editedImages,
+        { onItem: drafts.setStatus },
       );
 
-      if (!replacementResult.replaced || !replacementResult.attachment) {
-        setCapture(data);
-        setDraft(toDraft(data));
-        setError(
-          `Text changes were saved, but ${replacementResult.error ?? 'the image was not replaced. The original image is unchanged.'}`,
-        );
+      if (!result.saved || !result.attachments) {
+        setCapture(textSaved);
+        setError(`Text changes were saved, but ${result.error ?? 'the images were not changed.'}`);
       } else {
-        const savedCapture = { ...data, attachments: [replacementResult.attachment] };
-        const signedUrl = await createImageSignedUrl(
-          client,
-          replacementResult.attachment.storage_path,
+        const savedCapture = { ...textSaved, attachments: result.attachments };
+        const known = Object.fromEntries(
+          result.attachments
+            .filter((attachment) => imageUrls[attachment.id])
+            .map((attachment) => [attachment.id, imageUrls[attachment.id] ?? null]),
         );
+        const fresh = await signAll(
+          client,
+          result.attachments.filter((attachment) => !known[attachment.id]),
+        );
+        const urls = { ...known, ...fresh };
 
-        imageRefreshAttempted.current = false;
+        imageRefreshAttempted.current = new Set();
         setCapture(savedCapture);
         setDraft(toDraft(savedCapture));
-        setImageUrl(signedUrl);
+        setImageUrls(urls);
         setImageError(
-          signedUrl
-            ? null
-            : 'The replacement was saved, but its private preview could not be loaded. Retry later.',
+          Object.values(urls).some((url) => !url)
+            ? 'The images were saved, but a private preview could not be loaded. Retry later.'
+            : null,
         );
-        setMessage(replacementResult.warning ?? 'Changes saved. Image replaced.');
-        setIsReplacingImage(false);
-        setReplacementImage(null);
+        setGalleryIndex(0);
+        setMessage(result.warning ?? 'Changes saved. Images updated.');
+        drafts.reset([]);
         setIsEditing(false);
       }
     } else {
-      setCapture(data);
-      setDraft(toDraft(data));
+      const savedCapture = withSortedAttachments({ ...capture, ...data });
+      setCapture(savedCapture);
+      setDraft(toDraft(savedCapture));
       setMessage('Changes saved.');
+      drafts.reset([]);
       setIsEditing(false);
       // A new address deserves a new preview.
       if (data.kind === 'link' && data.source_url !== capture.source_url) {
@@ -486,16 +508,12 @@ export function CaptureDetailPage() {
     });
   }
 
-  async function saveImageToDevice() {
-    const attachment = capture?.attachments[0];
-
+  async function saveImageToDevice(attachment: StoredImageAttachment) {
     if (
       !capture ||
       capture.kind !== 'image' ||
-      !attachment ||
-      !imageUrl ||
       isSavingToPhoneRef.current ||
-      hasSavedToPhone
+      savedImageIds.has(attachment.id)
     ) {
       return;
     }
@@ -503,7 +521,7 @@ export function CaptureDetailPage() {
     isSavingToPhoneRef.current = true;
     setError(null);
     setMessage(null);
-    setIsSavingToPhone(true);
+    setSavingImageId(attachment.id);
 
     try {
       // The displayed link may be close to expiry; sign a short-lived one just for this download.
@@ -523,7 +541,7 @@ export function CaptureDetailPage() {
         mimeType: attachment.mime_type,
         url: downloadUrl,
       });
-      setHasSavedToPhone(true);
+      setSavedImageIds((current) => new Set(current).add(attachment.id));
       setMessage(`Image saved to ${result.location}.`);
     } catch {
       setError(
@@ -531,8 +549,31 @@ export function CaptureDetailPage() {
       );
     } finally {
       isSavingToPhoneRef.current = false;
-      setIsSavingToPhone(false);
+      setSavingImageId(null);
     }
+  }
+
+  /** In a browser, download the original file through a short-lived signed link. */
+  async function downloadImage(attachment: StoredImageAttachment) {
+    setError(null);
+    const url = await createImageDownloadUrl(
+      client,
+      attachment.storage_path,
+      attachment.original_name,
+    );
+
+    if (!url) {
+      setError('The download link could not be created. Please retry.');
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.rel = 'noopener';
+    link.download = attachment.original_name;
+    document.body.append(link);
+    link.click();
+    link.remove();
   }
 
   const backSection = (location.state as SectionState | null)?.section;
@@ -577,32 +618,64 @@ export function CaptureDetailPage() {
   }
 
   const statusDetails = captureStatusDetails[capture.status];
-  const isBusy = pendingAction !== null || isValidatingReplacement;
+  const isBusy = pendingAction !== null || drafts.isValidating;
   const isNativeApp = isNativeImageSaveAvailable();
-  const attachment = capture.attachments[0];
   const hasCopyableText = (capture.kind === 'note' || capture.kind === 'image') && capture.content;
   const displayTitle =
     capture.title?.trim() ||
     (capture.kind === 'link' ? linkPreview.fields.link_title?.trim() : null) ||
     `Untitled ${capture.kind}`;
+  const galleryImages: GalleryImage[] = capture.attachments.map((attachment) => ({
+    attachment,
+    url: imageUrls[attachment.id] ?? null,
+  }));
+  const imageAltText = capture.title || 'Saved image';
+  const uploading = drafts.images.filter((image) => image.status);
+  const uploadProgress =
+    pendingAction === 'save' && uploading.length
+      ? `Uploading ${uploading.filter((image) => image.status === 'done').length} of ${uploading.length}…`
+      : null;
+
+  const imageActions = (image: GalleryImage, _index: number, tone: 'page' | 'viewer' = 'page') => {
+    const { attachment } = image;
+    const className = tone === 'viewer' ? 'viewer__btn' : 'icon-btn';
+    if (!image.url) {
+      return null;
+    }
+    if (isNativeApp) {
+      const isSaving = savingImageId === attachment.id;
+      const isSaved = savedImageIds.has(attachment.id);
+      const label = isSaving ? 'Saving to phone…' : isSaved ? 'Saved to phone' : 'Save to phone';
+      const Icon = isSaving ? LoaderCircle : isSaved ? Check : Download;
+      return (
+        <button
+          aria-label={label}
+          className={className}
+          disabled={savingImageId !== null || isSaved}
+          onClick={() => void saveImageToDevice(attachment)}
+          title={label}
+          type="button"
+        >
+          <Icon aria-hidden="true" className={isSaving ? 'icon icon--spin' : 'icon'} />
+        </button>
+      );
+    }
+    return (
+      <button
+        aria-label="Download image"
+        className={className}
+        onClick={() => void downloadImage(attachment)}
+        title="Download image"
+        type="button"
+      >
+        <Download aria-hidden="true" className="icon" />
+      </button>
+    );
+  };
 
   const topActions = !isEditing && (
     <>
       <FavoriteButton isFavorite={meta.isFavorite} onToggle={() => void meta.toggleFavorite()} />
-      {capture.kind === 'image' && isNativeApp && attachment && imageUrl && (
-        <IconButton
-          disabled={isSavingToPhone || hasSavedToPhone}
-          icon={hasSavedToPhone ? Check : Download}
-          label={
-            isSavingToPhone
-              ? 'Saving to phone…'
-              : hasSavedToPhone
-                ? 'Saved to phone'
-                : 'Save to phone'
-          }
-          onClick={() => void saveImageToDevice()}
-        />
-      )}
       {hasCopyableText && (
         <IconButton icon={Copy} label="Copy content" onClick={() => void copyCaptureContent()} />
       )}
@@ -642,27 +715,37 @@ export function CaptureDetailPage() {
         </div>
       )}
 
-      {capture.kind === 'image' && !isReplacingImage && (
-        <CaptureImage
-          alt={capture.title || 'Saved image'}
-          attachment={attachment}
+      {capture.kind === 'image' && !isEditing && (
+        <ImageGallery
+          actions={(image, index) => imageActions(image, index)}
+          alt={imageAltText}
           error={imageError}
-          onError={() => void refreshImageUrl()}
-          onRetry={() => void refreshImageUrl(true)}
-          url={imageUrl}
+          images={galleryImages}
+          index={Math.min(galleryIndex, Math.max(0, galleryImages.length - 1))}
+          onImageError={(attachmentId) => void refreshImageUrl(attachmentId)}
+          onIndexChange={setGalleryIndex}
+          onOpen={setViewerIndex}
+          onRetry={() => void retryImages()}
+          onSize={recordSize}
+          sizes={imageSizes}
         />
       )}
 
-      {isEditing && capture.kind === 'image' && attachment && (
-        <ImageReplacement
-          isBusy={isBusy}
-          isReplacing={isReplacingImage}
-          isValidating={isValidatingReplacement}
-          onBegin={beginImageReplacement}
-          onChoose={(file) => void chooseReplacementImage(file)}
-          onUndo={undoImageReplacement}
-          replacement={replacementImage}
-        />
+      {isEditing && capture.kind === 'image' && (
+        <div className="edit-images">
+          <ImageTray
+            disabled={isBusy}
+            images={drafts.images}
+            isValidating={drafts.isValidating}
+            min={1}
+            onAdd={(files) => void addImages(files)}
+            onMove={drafts.move}
+            onRemove={drafts.remove}
+          />
+          <p className="edit-images__hint">
+            The first image is the cover. Saved images stay published until Save changes succeeds.
+          </p>
+        </div>
       )}
 
       {isEditing ? (
@@ -670,6 +753,7 @@ export function CaptureDetailPage() {
           draft={draft}
           isBusy={isBusy}
           isSaving={pendingAction === 'save'}
+          savingLabel={uploadProgress}
           onCancel={cancelEditing}
           onChange={updateDraft}
           onSubmit={(event) => void handleSave(event)}
@@ -726,6 +810,20 @@ export function CaptureDetailPage() {
             )}
           </ActionBar>
         </>
+      )}
+
+      {viewerIndex !== null && galleryImages.length > 0 && (
+        <ImageViewer
+          actions={(image, index) => imageActions(image, index, 'viewer')}
+          alt={imageAltText}
+          images={galleryImages}
+          index={Math.min(viewerIndex, galleryImages.length - 1)}
+          onClose={() => {
+            setGalleryIndex(viewerIndex);
+            setViewerIndex(null);
+          }}
+          onIndexChange={setViewerIndex}
+        />
       )}
 
       {isConfirmingDelete && (

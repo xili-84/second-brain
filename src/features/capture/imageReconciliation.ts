@@ -1,10 +1,9 @@
 import type { SecondBrainClient } from '../../lib/supabase/client';
 import {
   clearPendingImageOperation,
-  findCompletedAttachment,
   IMAGE_BUCKET,
+  operationPaths,
   readPendingImageOperation,
-  removePendingObject,
 } from './imageCapture';
 
 /**
@@ -113,29 +112,27 @@ async function reconcilePendingMarker(client: SecondBrainClient, userId: string,
     return null;
   }
 
-  const completionCheck = await findCompletedAttachment(client, pending);
-
-  if (completionCheck.error) {
-    return 'An unfinished image operation could not be checked. It will be retried later.';
-  }
-
-  if (completionCheck.completed) {
-    clearPendingImageOperation(pending);
-    return null;
-  }
-
-  const referenced = await findReferencedPaths(client, userId, [pending.storagePath]);
+  const paths = operationPaths(pending);
+  const referenced = await findReferencedPaths(client, userId, paths);
 
   if (!referenced) {
     return 'An unfinished image operation could not be checked. It will be retried later.';
   }
 
-  if (referenced.has(pending.storagePath)) {
+  // Referenced objects belong to a saved capture; only the unreferenced rest is removed.
+  const orphaned = paths.filter((path) => !referenced.has(path));
+
+  if (orphaned.length === 0) {
     clearPendingImageOperation(pending);
     return null;
   }
 
-  const cleanupError = await removePendingObject(client, pending);
+  const { error: cleanupError } = await client.storage.from(IMAGE_BUCKET).remove(orphaned);
+
+  if (!cleanupError) {
+    clearPendingImageOperation(pending);
+  }
+
   return cleanupError
     ? 'An unfinished image upload could not be cleaned up. It will be retried later.'
     : null;

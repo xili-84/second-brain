@@ -10,6 +10,7 @@ import android.net.Uri;
 import android.provider.OpenableColumns;
 import android.text.TextUtils;
 import android.util.Base64;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -21,14 +22,21 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 import java.util.UUID;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 @CapacitorPlugin(name = "ShareReceiver")
 public final class ShareReceiverPlugin extends Plugin {
     private static final long MAX_IMAGE_BYTES = 10L * 1024L * 1024L;
+    /** Matches MAX_IMAGES_PER_CAPTURE in the web app. */
+    private static final int MAX_SHARED_IMAGES = 10;
     private static final int IMAGE_CHUNK_BYTES = 192 * 1024;
     private static final String PREFERENCES_NAME = "second_brain_pending_share";
     private static final String PENDING_DIRECTORY = "pending-shares";
@@ -38,6 +46,8 @@ public final class ShareReceiverPlugin extends Plugin {
     private static final String KEY_IMAGE_NAME = "image_name";
     private static final String KEY_IMAGE_SIZE = "image_size";
     private static final String KEY_IMAGE_URI = "image_uri";
+    /** JSON array of every pending image (current builds); the single-image keys are legacy. */
+    private static final String KEY_IMAGES = "images";
     private static final String KEY_KIND = "kind";
     private static final String KEY_RECEIVED_AT = "received_at";
     private static final String KEY_TEXT = "text";
@@ -90,6 +100,7 @@ public final class ShareReceiverPlugin extends Plugin {
     public void readPendingImageChunk(PluginCall call) {
         String expectedId = call.getString(KEY_ID);
         Integer requestedOffset = call.getInt("offset", 0);
+        Integer requestedIndex = call.getInt("index", 0);
         SharedPreferences preferences = preferences();
 
         if (
@@ -105,7 +116,14 @@ public final class ShareReceiverPlugin extends Plugin {
             return;
         }
 
-        File imageFile = privateImageFile(preferences.getString(KEY_IMAGE_URI, ""));
+        List<String> imageUris = storedImageUris(preferences);
+
+        if (requestedIndex == null || requestedIndex < 0 || requestedIndex >= imageUris.size()) {
+            call.reject("The requested pending image does not exist.");
+            return;
+        }
+
+        File imageFile = privateImageFile(imageUris.get(requestedIndex));
 
         if (imageFile == null || !imageFile.isFile()) {
             call.reject("The pending image file is unavailable.");
@@ -139,16 +157,23 @@ public final class ShareReceiverPlugin extends Plugin {
     }
 
     private void processIntent(Intent intent) {
-        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) {
+        if (intent == null) {
+            return;
+        }
+
+        String action = intent.getAction();
+        boolean isMultiple = Intent.ACTION_SEND_MULTIPLE.equals(action);
+
+        if (!Intent.ACTION_SEND.equals(action) && !isMultiple) {
             return;
         }
 
         String mimeType = intent.getType();
 
-        if ("text/plain".equals(mimeType)) {
+        if (!isMultiple && "text/plain".equals(mimeType)) {
             receiveText(intent);
         } else if (mimeType != null && mimeType.startsWith("image/")) {
-            receiveImage(intent);
+            receiveImages(intent, readStreamUris(intent, isMultiple));
         } else {
             return;
         }
@@ -171,77 +196,130 @@ public final class ShareReceiverPlugin extends Plugin {
         replacePendingShare(share);
     }
 
-    private void receiveImage(Intent intent) {
-        Uri sourceUri = readStreamUri(intent);
+    /**
+     * Copies every shared image into private storage, checking each one on its own: content://
+     * from another app, JPEG/PNG/WebP, at most 10 MiB, and a matching file signature. Images that
+     * fail are skipped (and reported) so one bad item does not lose the rest; at most
+     * MAX_SHARED_IMAGES are kept.
+     */
+    private void receiveImages(Intent intent, List<Uri> sourceUris) {
         String title = firstNonBlank(
                 readText(intent, Intent.EXTRA_TITLE),
                 readText(intent, Intent.EXTRA_SUBJECT)
         );
         String text = readText(intent, Intent.EXTRA_TEXT);
 
-        if (sourceUri == null) {
+        if (sourceUris.isEmpty()) {
             replacePendingShare(errorShare(title, text, "The sharing app did not provide an image."));
             return;
         }
 
-        if (!isAllowedSourceUri(sourceUri)) {
-            replacePendingShare(
-                    errorShare(title, text, "The sharing app did not provide a readable image.")
-            );
-            return;
-        }
-
-        String mimeType = resolveImageMimeType(intent, sourceUri);
-
-        if (!isSupportedImageMime(mimeType)) {
-            replacePendingShare(
-                    errorShare(title, text, "Only JPEG, PNG, and WebP images are supported.")
-            );
-            return;
-        }
-
         String id = UUID.randomUUID().toString();
-        String displayName = readDisplayName(sourceUri);
+        JSArray images = new JSArray();
+        String firstProblem = null;
+        int skipped = 0;
+        int overLimit = 0;
 
-        if (TextUtils.isEmpty(displayName)) {
-            displayName = "shared-image." + extensionFor(mimeType);
+        for (Uri sourceUri : sourceUris) {
+            if (images.length() >= MAX_SHARED_IMAGES) {
+                overLimit += 1;
+                continue;
+            }
+
+            String problem;
+
+            try {
+                JSObject image = copySharedImage(intent, sourceUri, id, images.length());
+                images.put(image);
+                continue;
+            } catch (SharedImageException error) {
+                problem = error.getMessage();
+            }
+
+            skipped += 1;
+
+            if (firstProblem == null) {
+                firstProblem = problem;
+            }
         }
 
-        File pendingFile;
-
-        try {
-            pendingFile = copyToPrivateCache(sourceUri, id, mimeType);
-        } catch (ImageTooLargeException error) {
-            replacePendingShare(
-                    errorShare(title, text, "The shared image is larger than 10 MiB.")
-            );
-            return;
-        } catch (IOException | SecurityException error) {
-            replacePendingShare(
-                    errorShare(title, text, "The shared image could not be copied. Please share it again.")
-            );
-            return;
-        }
-
-        if (!hasExpectedImageSignature(pendingFile, mimeType)) {
-            pendingFile.delete();
-            replacePendingShare(
-                    errorShare(title, text, "The shared file contents do not match its image format.")
-            );
+        if (images.length() == 0) {
+            replacePendingShare(errorShare(
+                    title,
+                    text,
+                    firstProblem == null ? "The shared images could not be prepared." : firstProblem
+            ));
             return;
         }
 
         JSObject share = baseShare(KIND_IMAGE, title, text);
         share.put(KEY_ID, id);
+        share.put(KEY_IMAGES, images);
+
+        try {
+            share.put("image", images.getJSONObject(0));
+        } catch (JSONException ignored) {
+            // The list was just built; index 0 always exists here.
+        }
+
+        List<String> notes = new ArrayList<>();
+
+        if (skipped > 0) {
+            notes.add(skipped + (skipped == 1 ? " shared item was skipped: " : " shared items were skipped: ")
+                    + firstProblem);
+        }
+
+        if (overLimit > 0) {
+            notes.add("Only the first " + MAX_SHARED_IMAGES + " images were kept.");
+        }
+
+        if (!notes.isEmpty()) {
+            share.put(KEY_ERROR, TextUtils.join(" ", notes));
+        }
+
+        replacePendingShare(share);
+    }
+
+    private JSObject copySharedImage(Intent intent, Uri sourceUri, String shareId, int index)
+            throws SharedImageException {
+        if (!isAllowedSourceUri(sourceUri)) {
+            throw new SharedImageException("The sharing app did not provide a readable image.");
+        }
+
+        String mimeType = resolveImageMimeType(intent, sourceUri);
+
+        if (!isSupportedImageMime(mimeType)) {
+            throw new SharedImageException("Only JPEG, PNG, and WebP images are supported.");
+        }
+
+        String displayName = readDisplayName(sourceUri);
+
+        if (TextUtils.isEmpty(displayName)) {
+            displayName = "shared-image-" + (index + 1) + "." + extensionFor(mimeType);
+        }
+
+        File pendingFile;
+
+        try {
+            pendingFile = copyToPrivateCache(sourceUri, shareId + "-" + index, mimeType);
+        } catch (ImageTooLargeException error) {
+            throw new SharedImageException("The shared image is larger than 10 MiB.");
+        } catch (IOException | SecurityException error) {
+            throw new SharedImageException("The shared image could not be copied. Please share it again.");
+        }
+
+        if (!hasExpectedImageSignature(pendingFile, mimeType)) {
+            pendingFile.delete();
+            throw new SharedImageException("The shared file contents do not match its image format.");
+        }
 
         JSObject image = new JSObject();
+        image.put("index", index);
         image.put("mimeType", mimeType);
         image.put("name", safeDisplayName(displayName, mimeType));
         image.put("size", pendingFile.length());
         image.put("uri", Uri.fromFile(pendingFile).toString());
-        share.put("image", image);
-
-        replacePendingShare(share);
+        return image;
     }
 
     private JSObject errorShare(String title, String text, String message) {
@@ -281,14 +359,10 @@ public final class ShareReceiverPlugin extends Plugin {
             editor.putString(KEY_ERROR, error);
         }
 
-        JSObject image = share.getJSObject("image");
+        JSONArray images = share.optJSONArray(KEY_IMAGES);
 
-        if (image != null) {
-            editor
-                    .putString(KEY_IMAGE_MIME_TYPE, image.getString("mimeType"))
-                    .putString(KEY_IMAGE_NAME, image.getString("name"))
-                    .putLong(KEY_IMAGE_SIZE, image.optLong("size", 0L))
-                    .putString(KEY_IMAGE_URI, image.getString("uri"));
+        if (images != null) {
+            editor.putString(KEY_IMAGES, images.toString());
         }
 
         editor.apply();
@@ -315,23 +389,79 @@ public final class ShareReceiverPlugin extends Plugin {
             share.put(KEY_ERROR, error);
         }
 
-        String imageUri = preferences.getString(KEY_IMAGE_URI, "");
+        JSArray images = storedImages(preferences);
 
-        if (!TextUtils.isEmpty(imageUri)) {
-            JSObject image = new JSObject();
-            image.put("mimeType", preferences.getString(KEY_IMAGE_MIME_TYPE, ""));
-            image.put("name", preferences.getString(KEY_IMAGE_NAME, "shared-image"));
-            image.put("size", preferences.getLong(KEY_IMAGE_SIZE, 0L));
-            image.put("uri", imageUri);
-            share.put("image", image);
+        if (images.length() > 0) {
+            share.put(KEY_IMAGES, images);
+
+            try {
+                share.put("image", images.getJSONObject(0));
+            } catch (JSONException ignored) {
+                // Checked above: the list is not empty.
+            }
         }
 
         return share;
     }
 
+    /** Pending images from the current JSON list, or the single legacy image of older builds. */
+    private JSArray storedImages(SharedPreferences preferences) {
+        JSArray images = new JSArray();
+        String json = preferences.getString(KEY_IMAGES, "");
+
+        if (!TextUtils.isEmpty(json)) {
+            try {
+                JSONArray stored = new JSONArray(json);
+
+                for (int index = 0; index < stored.length(); index += 1) {
+                    JSONObject item = stored.getJSONObject(index);
+                    JSObject image = new JSObject();
+                    image.put("index", index);
+                    image.put("mimeType", item.optString("mimeType", ""));
+                    image.put("name", item.optString("name", "shared-image"));
+                    image.put("size", item.optLong("size", 0L));
+                    image.put("uri", item.optString("uri", ""));
+                    images.put(image);
+                }
+            } catch (JSONException ignored) {
+                // A damaged list is treated as no images; clearing the share removes the files.
+            }
+
+            return images;
+        }
+
+        String imageUri = preferences.getString(KEY_IMAGE_URI, "");
+
+        if (!TextUtils.isEmpty(imageUri)) {
+            JSObject image = new JSObject();
+            image.put("index", 0);
+            image.put("mimeType", preferences.getString(KEY_IMAGE_MIME_TYPE, ""));
+            image.put("name", preferences.getString(KEY_IMAGE_NAME, "shared-image"));
+            image.put("size", preferences.getLong(KEY_IMAGE_SIZE, 0L));
+            image.put("uri", imageUri);
+            images.put(image);
+        }
+
+        return images;
+    }
+
+    private List<String> storedImageUris(SharedPreferences preferences) {
+        List<String> uris = new ArrayList<>();
+        JSArray images = storedImages(preferences);
+
+        for (int index = 0; index < images.length(); index += 1) {
+            JSONObject image = images.optJSONObject(index);
+            uris.add(image == null ? "" : image.optString("uri", ""));
+        }
+
+        return uris;
+    }
+
     private void clearStoredShare() {
-        String imageUri = preferences().getString(KEY_IMAGE_URI, "");
-        deletePrivateImage(imageUri);
+        for (String imageUri : storedImageUris(preferences())) {
+            deletePrivateImage(imageUri);
+        }
+
         preferences().edit().clear().apply();
     }
 
@@ -476,14 +606,22 @@ public final class ShareReceiverPlugin extends Plugin {
                 && !authority.startsWith(packageName + ".");
     }
 
+    /** The provider's own type for this item wins (a multi-share may mix formats or say image/*). */
     private String resolveImageMimeType(Intent intent, Uri sourceUri) {
-        String intentType = intent.getType();
+        String providerType = null;
 
-        if (isSupportedImageMime(intentType)) {
-            return intentType;
+        try {
+            providerType = getContext().getContentResolver().getType(sourceUri);
+        } catch (RuntimeException ignored) {
+            // Fall back to the type the sharing app declared.
         }
 
-        return getContext().getContentResolver().getType(sourceUri);
+        if (isSupportedImageMime(providerType)) {
+            return providerType;
+        }
+
+        String intentType = intent.getType();
+        return isSupportedImageMime(intentType) ? intentType : providerType;
     }
 
     private String readDisplayName(Uri sourceUri) {
@@ -504,20 +642,48 @@ public final class ShareReceiverPlugin extends Plugin {
     }
 
     @SuppressWarnings("deprecation")
-    private static Uri readStreamUri(Intent intent) {
-        Object value = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+    private static List<Uri> readStreamUris(Intent intent, boolean isMultiple) {
+        List<Uri> uris = new ArrayList<>();
 
-        if (value instanceof Uri) {
-            return (Uri) value;
+        if (isMultiple) {
+            ArrayList<?> values = null;
+
+            try {
+                values = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            } catch (RuntimeException ignored) {
+                // A malformed extra falls back to the clip data below.
+            }
+
+            if (values != null) {
+                for (Object value : values) {
+                    if (value instanceof Uri && !uris.contains(value)) {
+                        uris.add((Uri) value);
+                    }
+                }
+            }
+        } else {
+            Object value = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+
+            if (value instanceof Uri) {
+                uris.add((Uri) value);
+            }
         }
 
         ClipData clipData = intent.getClipData();
 
-        if (clipData != null && clipData.getItemCount() > 0) {
-            return clipData.getItemAt(0).getUri();
+        if (uris.isEmpty() && clipData != null) {
+            int count = isMultiple ? clipData.getItemCount() : Math.min(1, clipData.getItemCount());
+
+            for (int index = 0; index < count; index += 1) {
+                Uri uri = clipData.getItemAt(index).getUri();
+
+                if (uri != null && !uris.contains(uri)) {
+                    uris.add(uri);
+                }
+            }
         }
 
-        return null;
+        return uris;
     }
 
     private static String safeDisplayName(String value, String mimeType) {
@@ -571,4 +737,10 @@ public final class ShareReceiverPlugin extends Plugin {
     }
 
     private static final class ImageTooLargeException extends Exception {}
+
+    private static final class SharedImageException extends Exception {
+        SharedImageException(String message) {
+            super(message);
+        }
+    }
 }

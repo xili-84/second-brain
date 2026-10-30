@@ -69,6 +69,31 @@ describe('deleteCapture', () => {
   });
 });
 
+describe('deleteCapture with several images', () => {
+  it('removes every image and any stray file in the folder before the records', async () => {
+    const { client, remove } = createClient({
+      listResults: [{ data: [{ id: 'o3', name: 'stray.jpg' }], error: null }],
+    });
+
+    await expect(
+      deleteCapture(client, USER, {
+        attachments: [{ storage_path: `${USER}/i1/a.png` }, { storage_path: `${USER}/i1/b.jpg` }],
+        id: 'i1',
+        kind: 'image',
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(remove).toHaveBeenCalledWith([
+      `${USER}/i1/a.png`,
+      `${USER}/i1/b.jpg`,
+      `${USER}/i1/stray.jpg`,
+    ]);
+    expect(vi.mocked(client.rpc)).toHaveBeenCalledWith('delete_image_capture_after_storage', {
+      p_capture_id: 'i1',
+    });
+  });
+});
+
 describe('deleteCaptures', () => {
   it('keeps going after a failure and reports ids in the given order', async () => {
     const { builder, client } = createClient();

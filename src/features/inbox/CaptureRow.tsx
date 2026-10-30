@@ -17,6 +17,8 @@ type CaptureRowProps = {
   /** With onToggle a star button is shown; without it a favorite only gets a small marker. */
   favorite?: { isFavorite: boolean; onToggle?: (() => void) | undefined } | undefined;
   href: string;
+  /** Images in an image capture; more than one adds a "+N" badge to the thumbnail. */
+  imageCount?: number;
   kind: string;
   /** Shows an image slot; `thumbnailUrl` fills it once a signed URL exists. */
   showThumbnail?: boolean;
@@ -40,6 +42,7 @@ export function CaptureRow({
   favicon,
   favorite,
   href,
+  imageCount = 0,
   kind,
   section,
   selection,
@@ -83,6 +86,12 @@ export function CaptureRow({
       {showThumbnail && (
         <span className="row__thumb">
           {thumbnailUrl && <img alt="" decoding="async" loading="lazy" src={thumbnailUrl} />}
+          {imageCount > 1 && (
+            <span className="row__thumb-count">
+              <span aria-hidden="true">+{imageCount - 1}</span>
+              <span className="visually-hidden">{imageCount} images</span>
+            </span>
+          )}
         </span>
       )}
     </>

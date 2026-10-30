@@ -7,7 +7,7 @@ import type { SecondBrainClient } from '../../lib/supabase/client';
 import { AuthContext } from '../auth/authContext';
 import { CaptureDetailPage } from './CaptureDetailPage';
 import { validateImageFile } from './imageCapture';
-import { replaceImageAttachment } from './imageReplacement';
+import { applyImageEdits } from './imageEdits';
 import { isNativeImageSaveAvailable, saveImageToPhone } from './nativeImageSaver';
 
 vi.mock('./imageCapture', async (importOriginal) => {
@@ -15,9 +15,10 @@ vi.mock('./imageCapture', async (importOriginal) => {
   return { ...actual, validateImageFile: vi.fn() };
 });
 
-vi.mock('./imageReplacement', () => ({
-  replaceImageAttachment: vi.fn(),
-}));
+vi.mock('./imageEdits', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./imageEdits')>();
+  return { ...actual, applyImageEdits: vi.fn() };
+});
 
 vi.mock('./nativeImageSaver', () => ({
   isNativeImageSaveAvailable: vi.fn(() => false),
@@ -26,6 +27,7 @@ vi.mock('./nativeImageSaver', () => ({
 
 type TestCapture = {
   attachments: {
+    created_at?: string;
     id: string;
     mime_type: string;
     original_name: string;
@@ -52,6 +54,24 @@ const capture: TestCapture = {
   status: 'inbox',
   title: 'A useful thought',
   updated_at: '2026-07-24T12:00:00.000Z',
+};
+
+const receipt = {
+  created_at: '2026-07-24T12:00:00.000Z',
+  id: 'attachment-id',
+  mime_type: 'image/png',
+  original_name: 'receipt.png',
+  size_bytes: 2048,
+  storage_path: 'user/capture-id/attachment-id.png',
+};
+
+const postAttachment = {
+  created_at: '2026-07-24T12:00:00.001Z',
+  id: 'post-id',
+  mime_type: 'image/jpeg',
+  original_name: 'post.jpg',
+  size_bytes: 4,
+  storage_path: 'user/capture-id/post-id.jpg',
 };
 
 function renderDetail(client: SecondBrainClient) {
@@ -158,7 +178,7 @@ describe('capture detail', () => {
   beforeEach(() => {
     vi.mocked(validateImageFile).mockReset();
     vi.mocked(validateImageFile).mockResolvedValue(null);
-    vi.mocked(replaceImageAttachment).mockReset();
+    vi.mocked(applyImageEdits).mockReset();
     vi.mocked(isNativeImageSaveAvailable).mockReturnValue(false);
     vi.mocked(saveImageToPhone).mockReset();
     writeText.mockReset();
@@ -313,18 +333,10 @@ describe('capture detail', () => {
     expect(screen.getByText('Original note')).toBeVisible();
   });
 
-  it('lets an image removal be canceled without changing the published image', async () => {
+  it('lets an image edit be canceled without changing the published image', async () => {
     const imageCapture: TestCapture = {
       ...capture,
-      attachments: [
-        {
-          id: 'attachment-id',
-          mime_type: 'image/png',
-          original_name: 'receipt.png',
-          size_bytes: 2048,
-          storage_path: 'user/capture-id/attachment-id.png',
-        },
-      ],
+      attachments: [receipt],
       content: 'Receipt details',
       kind: 'image',
       title: 'Private receipt',
@@ -334,110 +346,153 @@ describe('capture detail', () => {
 
     expect(await screen.findByRole('img', { name: 'Private receipt' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Replace image' }));
 
-    expect(screen.queryByRole('img', { name: 'Private receipt' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Replacement image')).toBeInTheDocument();
-    expect(
-      screen.getByText('The published image is unchanged until Save changes succeeds.'),
-    ).toBeVisible();
+    // The only image cannot be removed; more can be added.
+    expect(screen.getByRole('img', { name: 'Preview of receipt.png' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /Remove image 1/u })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Add images'), {
+      target: { files: [new File(['post'], 'post.jpg', { type: 'image/jpeg' })] },
+    });
+    expect(await screen.findByRole('img', { name: 'Preview of post.jpg' })).toBeVisible();
+    expect(screen.getByText('2 of 10')).toBeVisible();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(screen.getByRole('img', { name: 'Private receipt' })).toBeVisible();
-    expect(screen.queryByLabelText('Replacement image')).not.toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Preview of post.jpg' })).not.toBeInTheDocument();
     expect(updateCall).not.toHaveBeenCalled();
+    expect(applyImageEdits).not.toHaveBeenCalled();
   });
 
-  it('requires a replacement file before saving an image removal', async () => {
+  it('adds an image while editing and shows both in a gallery', async () => {
     const imageCapture: TestCapture = {
       ...capture,
-      attachments: [
-        {
-          id: 'attachment-id',
-          mime_type: 'image/png',
-          original_name: 'receipt.png',
-          size_bytes: 2048,
-          storage_path: 'user/capture-id/attachment-id.png',
-        },
-      ],
+      attachments: [receipt],
       content: 'Receipt details',
       kind: 'image',
       title: 'Private receipt',
     };
-    const { client, updateCall } = createDetailClient({ loadedCapture: imageCapture });
-    renderDetail(client);
-
-    await screen.findByRole('img', { name: 'Private receipt' });
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Replace image' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Choose a replacement image before saving',
-    );
-    expect(screen.getByLabelText('Replacement image')).toBeInTheDocument();
-    expect(updateCall).not.toHaveBeenCalled();
-  });
-
-  it('replaces the attachment and returns to the updated reading view', async () => {
-    const oldAttachment = {
-      id: 'attachment-id',
-      mime_type: 'image/png',
-      original_name: 'receipt.png',
-      size_bytes: 2048,
-      storage_path: 'user/capture-id/attachment-id.png',
-    };
-    const newAttachment = {
-      ...oldAttachment,
-      mime_type: 'image/webp',
-      original_name: 'replacement.webp',
-      size_bytes: 11,
-      storage_path: 'user/capture-id/replacement.webp',
-    };
-    const imageCapture: TestCapture = {
-      ...capture,
-      attachments: [oldAttachment],
-      content: 'Receipt details',
-      kind: 'image',
-      title: 'Private receipt',
-    };
-    const replacement = new File(['replacement'], 'replacement.webp', {
-      type: 'image/webp',
-    });
+    const post = new File(['post'], 'post.jpg', { type: 'image/jpeg' });
     const { client } = createDetailClient({
       loadedCapture: imageCapture,
       updateResult: { data: imageCapture, error: null },
     });
-    vi.mocked(replaceImageAttachment).mockResolvedValue({
-      attachment: newAttachment,
+    vi.mocked(applyImageEdits).mockResolvedValue({
+      attachments: [receipt, postAttachment],
       error: null,
-      replaced: true,
+      failedKeys: [],
+      saved: true,
       warning: null,
     });
     renderDetail(client);
 
     await screen.findByRole('img', { name: 'Private receipt' });
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Replace image' }));
-    fireEvent.change(screen.getByLabelText('Replacement image'), {
-      target: { files: [replacement] },
-    });
-    await screen.findByText(/Selected: replacement\.webp/);
+    fireEvent.change(screen.getByLabelText('Add images'), { target: { files: [post] } });
+    await screen.findByRole('img', { name: 'Preview of post.jpg' });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    await waitFor(() =>
-      expect(replaceImageAttachment).toHaveBeenCalledWith(
-        client,
-        '8cfd9d8f-dde8-4ec3-b7d8-2fcb4241240d',
-        'capture-id',
-        oldAttachment,
-        replacement,
-      ),
+    await waitFor(() => expect(applyImageEdits).toHaveBeenCalledTimes(1));
+    const [, userId, captureId, current, next] = vi.mocked(applyImageEdits).mock.calls[0]!;
+    expect(userId).toBe('8cfd9d8f-dde8-4ec3-b7d8-2fcb4241240d');
+    expect(captureId).toBe('capture-id');
+    expect(current).toEqual([receipt]);
+    expect(next.map((image) => image.kind)).toEqual(['stored', 'new']);
+    expect(next[1]).toMatchObject({ file: post, kind: 'new' });
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Changes saved. Images updated.');
+    expect(screen.getByRole('img', { name: 'Private receipt, image 1 of 2' })).toBeVisible();
+    expect(screen.getByText('1 / 2')).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next image' }));
+    expect(screen.getByRole('img', { name: 'Private receipt, image 2 of 2' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Show image 2 of 2' })).toHaveAttribute(
+      'aria-current',
+      'true',
     );
-    expect(await screen.findByRole('status')).toHaveTextContent('Changes saved. Image replaced.');
-    expect(screen.getByRole('img', { name: 'Private receipt' })).toBeVisible();
-    expect(screen.queryByLabelText('Replacement image')).not.toBeInTheDocument();
+    expect(screen.getByText(/post\.jpg · 0\.0 MB/u)).toBeVisible();
+  });
+
+  it('keeps the edit open and reports failed uploads', async () => {
+    const imageCapture: TestCapture = {
+      ...capture,
+      attachments: [receipt],
+      kind: 'image',
+      title: 'Private receipt',
+    };
+    const { client } = createDetailClient({
+      loadedCapture: imageCapture,
+      updateResult: { data: imageCapture, error: null },
+    });
+    vi.mocked(applyImageEdits).mockResolvedValue({
+      attachments: null,
+      error: '1 of 1 new image did not upload. Nothing was changed; retry or remove it.',
+      failedKeys: ['x'],
+      saved: false,
+      warning: null,
+    });
+    renderDetail(client);
+
+    await screen.findByRole('img', { name: 'Private receipt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Add images'), {
+      target: { files: [new File(['post'], 'post.jpg', { type: 'image/jpeg' })] },
+    });
+    await screen.findByRole('img', { name: 'Preview of post.jpg' });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Text changes were saved, but 1 of 1 new image did not upload.',
+    );
+    expect(screen.getByRole('img', { name: 'Preview of post.jpg' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+  });
+
+  it('opens a full-screen viewer that moves with arrow keys and closes with Escape', async () => {
+    const imageCapture: TestCapture = {
+      ...capture,
+      attachments: [postAttachment, receipt],
+      kind: 'image',
+      title: 'Story and post',
+    };
+    const { client } = createDetailClient({ loadedCapture: imageCapture });
+    renderDetail(client);
+
+    // Shown in stored order (oldest first), whatever order the API returned.
+    const cover = await screen.findByRole('img', { name: 'Story and post, image 1 of 2' });
+    expect(screen.getByText(/receipt\.png/u)).toBeVisible();
+    fireEvent.click(cover);
+
+    const viewer = screen.getByRole('dialog', { name: 'Image 1 of 2' });
+    expect(within(viewer).getByRole('button', { name: 'Close' })).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'ArrowRight' });
+    expect(screen.getByRole('dialog', { name: 'Image 2 of 2' })).toBeVisible();
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // The page gallery follows the image the viewer was closed on.
+    expect(screen.getByRole('img', { name: 'Story and post, image 2 of 2' })).toBeVisible();
+  });
+
+  it('downloads the current image through a signed link in the browser', async () => {
+    const imageCapture: TestCapture = {
+      ...capture,
+      attachments: [receipt],
+      kind: 'image',
+      title: 'Private receipt',
+    };
+    const { client, createSignedUrl } = createDetailClient({ loadedCapture: imageCapture });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    renderDetail(client);
+
+    await screen.findByRole('img', { name: 'Private receipt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Download image' }));
+
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(createSignedUrl).toHaveBeenLastCalledWith(receipt.storage_path, 300, {
+      download: 'receipt.png',
+    });
+    click.mockRestore();
   });
 
   it('keeps edited content available when saving fails', async () => {
@@ -673,5 +728,50 @@ describe('capture detail', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('could not be loaded');
     expect(createSignedUrl).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('button', { name: 'Retry' })).toBeVisible();
+  });
+
+  it('removes every image of a multi-image capture before deleting its records', async () => {
+    const imageCapture: TestCapture = {
+      ...capture,
+      attachments: [receipt, postAttachment],
+      kind: 'image',
+      title: 'Story and post',
+    };
+    const { client, remove, rpc } = createDetailClient({ loadedCapture: imageCapture });
+    renderDetail(client);
+
+    await screen.findByRole('img', { name: 'Story and post, image 1 of 2' });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
+
+    await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+    expect(remove).toHaveBeenCalledWith([receipt.storage_path, postAttachment.storage_path]);
+    expect(remove.mock.invocationCallOrder[0]!).toBeLessThan(rpc.mock.invocationCallOrder[0]!);
+  });
+
+  it('saves the image on screen, not just the first, to the phone', async () => {
+    const imageCapture: TestCapture = {
+      ...capture,
+      attachments: [receipt, postAttachment],
+      kind: 'image',
+      title: 'Story and post',
+    };
+    const { client } = createDetailClient({ loadedCapture: imageCapture });
+    vi.mocked(isNativeImageSaveAvailable).mockReturnValue(true);
+    vi.mocked(saveImageToPhone).mockResolvedValue({ location: 'Pictures/Second Brain' });
+    renderDetail(client);
+
+    await screen.findByRole('img', { name: 'Story and post, image 1 of 2' });
+    fireEvent.click(screen.getByRole('button', { name: 'Show image 2 of 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save to phone' }));
+
+    await waitFor(() =>
+      expect(saveImageToPhone).toHaveBeenCalledWith(
+        expect.objectContaining({ fileName: 'post.jpg', mimeType: 'image/jpeg' }),
+      ),
+    );
+    expect(await screen.findByRole('button', { name: 'Saved to phone' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Show image 1 of 2' }));
+    expect(screen.getByRole('button', { name: 'Save to phone' })).toBeEnabled();
   });
 });

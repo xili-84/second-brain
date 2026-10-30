@@ -3,23 +3,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SecondBrainClient } from '../../lib/supabase/client';
 import type { CaptureDraft } from './captureDraft';
 import {
+  createImageCaptureOperation,
   createImageOperation,
   readPendingImageOperation,
   saveImageCapture,
   validateImageFile,
   validateImageMetadata,
-  type ImageOperation,
+  type ImageCaptureOperation,
+  type ImageUploadItem,
 } from './imageCapture';
 
 const userId = '8cfd9d8f-dde8-4ec3-b7d8-2fcb4241240d';
-const operation: ImageOperation = {
-  attachmentId: '30f6733b-97dc-4b26-b0bb-1b217254953f',
-  captureId: '88aa03fb-b4de-409a-b01b-5c79dbca2fb9',
-  createdAt: '2026-07-24T16:00:00.000Z',
-  storagePath:
-    '8cfd9d8f-dde8-4ec3-b7d8-2fcb4241240d/88aa03fb-b4de-409a-b01b-5c79dbca2fb9/30f6733b-97dc-4b26-b0bb-1b217254953f.png',
-  userId,
-};
+const captureId = '88aa03fb-b4de-409a-b01b-5c79dbca2fb9';
 const draft: CaptureDraft = {
   content: 'Receipt from today',
   id: 'unused-for-image',
@@ -27,38 +22,75 @@ const draft: CaptureDraft = {
   sourceUrl: '',
   title: 'Receipt',
 };
-const file = new File(['png'], 'receipt.png', { type: 'image/png' });
+const story = new File(['story'], 'story.png', { type: 'image/png' });
+const post = new File(['post'], 'post.jpg', { type: 'image/jpeg' });
+
+function item(key: string, file: File, attachmentId: string): ImageUploadItem {
+  const extension = file.type === 'image/png' ? 'png' : 'jpg';
+  return {
+    attachmentId,
+    file,
+    key,
+    storagePath: `${userId}/${captureId}/${attachmentId}.${extension}`,
+  };
+}
+
+const storyItem = item('story', story, '30f6733b-97dc-4b26-b0bb-1b217254953f');
+const postItem = item('post', post, '5a1c2f0e-6c1e-4b9b-9a43-0f3c7d1f8e21');
+
+function operationOf(items: ImageUploadItem[]): ImageCaptureOperation {
+  return { captureId, createdAt: '2026-10-30T16:00:00.000Z', items, userId };
+}
 
 afterEach(() => {
   localStorage.clear();
 });
 
+type Result = { data: unknown; error: unknown };
+
 function createImageClient({
-  attachmentResult = { data: null, error: null },
-  finalizeResult = { data: [{ created_capture_id: operation.captureId }], error: null },
+  attachmentResult = { data: { created_at: '2026-10-30T16:00:01.000Z' }, error: null },
+  confirmResult = { data: [], error: null },
+  finalizeResult = { data: [{ created_capture_id: captureId }], error: null },
+  insertResult = { data: null, error: null },
   removeResult = { data: [], error: null },
-  uploadResult = { data: { path: operation.storagePath }, error: null },
+  upload = vi.fn().mockResolvedValue({ data: {}, error: null }),
 }: {
-  attachmentResult?: { data: null | Record<string, string>; error: Error | null };
-  finalizeResult?: { data: unknown; error: Error | null };
-  removeResult?: { data: unknown[]; error: Error | null };
-  uploadResult?: { data: { path: string } | null; error: Error | null };
+  attachmentResult?: Result;
+  confirmResult?: Result;
+  finalizeResult?: Result;
+  insertResult?: Result;
+  removeResult?: Result;
+  upload?: ReturnType<typeof vi.fn>;
 } = {}) {
-  const upload = vi.fn().mockResolvedValue(uploadResult);
   const remove = vi.fn().mockResolvedValue(removeResult);
   const rpc = vi.fn().mockResolvedValue(finalizeResult);
-  const maybeSingle = vi.fn().mockResolvedValue(attachmentResult);
-  const eq = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle }) });
-  const select = vi.fn().mockReturnValue({ eq });
+  const insert = vi.fn().mockResolvedValue(insertResult);
+  const from = vi.fn(() => {
+    let mode: 'confirm' | 'single' = 'single';
+    const builder = {
+      eq: vi.fn(() => builder),
+      in: vi.fn(() => {
+        mode = 'confirm';
+        return builder;
+      }),
+      insert,
+      maybeSingle: vi.fn(() => Promise.resolve(attachmentResult)),
+      select: vi.fn(() => builder),
+      then: (resolve: (value: Result) => void) =>
+        resolve(mode === 'confirm' ? confirmResult : attachmentResult),
+    };
+    return builder;
+  });
   const client = {
-    from: vi.fn().mockReturnValue({ select }),
+    from,
     rpc,
     storage: {
       from: vi.fn().mockReturnValue({ remove, upload }),
     },
   } as unknown as SecondBrainClient;
 
-  return { client, remove, rpc, upload };
+  return { client, insert, remove, rpc, upload };
 }
 
 describe('image capture safety', () => {
@@ -99,51 +131,156 @@ describe('image capture safety', () => {
     expect(created.storagePath).toBe(`${userId}/${created.captureId}/${created.attachmentId}.webp`);
   });
 
-  it('reports success only after upload and transactional finalization succeed', async () => {
-    const { client, remove, rpc, upload } = createImageClient();
+  it('creates one upload slot per image inside the capture folder', () => {
+    const created = createImageCaptureOperation(userId, [
+      { file: story, key: 'a' },
+      { file: post, key: 'b' },
+    ]);
 
-    await expect(saveImageCapture(client, operation, draft, file)).resolves.toEqual({
+    expect(created.items.map((entry) => entry.key)).toEqual(['a', 'b']);
+    for (const entry of created.items) {
+      expect(entry.storagePath).toMatch(
+        new RegExp(`^${userId}/${created.captureId}/${entry.attachmentId}\\.(png|jpg)$`),
+      );
+    }
+  });
+
+  it('reports success only after upload and transactional finalization succeed', async () => {
+    const { client, insert, remove, rpc, upload } = createImageClient();
+
+    await expect(saveImageCapture(client, operationOf([storyItem]), draft)).resolves.toMatchObject({
       error: null,
       saved: true,
+      warning: null,
     });
     expect(upload).toHaveBeenCalledWith(
-      operation.storagePath,
-      file,
+      storyItem.storagePath,
+      story,
       expect.objectContaining({ upsert: false }),
     );
     expect(rpc).toHaveBeenCalledWith(
       'finalize_image_capture',
       expect.objectContaining({
-        p_attachment_id: operation.attachmentId,
-        p_capture_id: operation.captureId,
+        p_attachment_id: storyItem.attachmentId,
+        p_capture_id: captureId,
       }),
     );
+    expect(insert).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
     expect(readPendingImageOperation()).toBeNull();
   });
 
-  it('removes the uploaded object and reports no success when finalization fails', async () => {
+  it('uploads every image, creates the capture with the first and attaches the rest after it', async () => {
+    const { client, insert, rpc, upload } = createImageClient();
+    const onItem = vi.fn();
+
+    const result = await saveImageCapture(client, operationOf([storyItem, postItem]), draft, {
+      onItem,
+    });
+
+    expect(result).toMatchObject({ saved: true, warning: null });
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc.mock.calls[0]![1]).toMatchObject({ p_attachment_id: storyItem.attachmentId });
+    expect(insert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        capture_id: captureId,
+        created_at: '2026-10-30T16:00:01.001Z',
+        id: postItem.attachmentId,
+        mime_type: 'image/jpeg',
+        original_name: 'post.jpg',
+        storage_path: postItem.storagePath,
+        user_id: userId,
+      }),
+    ]);
+    expect(onItem).toHaveBeenCalledWith('story', 'done');
+    expect(onItem).toHaveBeenCalledWith('post', 'done');
+    expect(readPendingImageOperation()).toBeNull();
+  });
+
+  it('creates nothing when one upload fails, and a retry uploads only the failed image', async () => {
+    const upload = vi
+      .fn()
+      .mockImplementation((path: string) =>
+        Promise.resolve(
+          path === postItem.storagePath
+            ? { data: null, error: new Error('network') }
+            : { data: {}, error: null },
+        ),
+      );
+    const { client, rpc } = createImageClient({ upload });
+
+    const first = await saveImageCapture(client, operationOf([storyItem, postItem]), draft);
+
+    expect(first).toMatchObject({ failedKeys: ['post'], saved: false, uploadedKeys: ['story'] });
+    expect(first.error).toContain('1 of 2 images did not upload');
+    expect(rpc).not.toHaveBeenCalled();
+    // The marker stays so the stored image is cleaned up if the draft is abandoned.
+    expect(readPendingImageOperation()?.additionalPaths).toEqual([postItem.storagePath]);
+
+    upload.mockClear();
+    upload.mockResolvedValue({ data: {}, error: null });
+    const retry = await saveImageCapture(client, operationOf([storyItem, postItem]), draft, {
+      uploadedKeys: new Set(first.uploadedKeys),
+    });
+
+    expect(retry.saved).toBe(true);
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(upload).toHaveBeenCalledWith(postItem.storagePath, post, expect.anything());
+  });
+
+  it('treats an upload that already exists (lost response) as stored', async () => {
+    const upload = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: 'The resource already exists', statusCode: '409' },
+    });
+    const { client, rpc } = createImageClient({ upload });
+
+    await expect(saveImageCapture(client, operationOf([storyItem]), draft)).resolves.toMatchObject({
+      saved: true,
+    });
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes every uploaded object and reports no success when finalization fails', async () => {
     const { client, remove } = createImageClient({
+      attachmentResult: { data: null, error: null },
       finalizeResult: { data: null, error: new Error('database unavailable') },
     });
 
-    const result = await saveImageCapture(client, operation, draft, file);
+    const result = await saveImageCapture(client, operationOf([storyItem, postItem]), draft);
 
     expect(result.saved).toBe(false);
+    expect(result.uploadedKeys).toEqual([]);
     expect(result.error).toContain('metadata was not saved');
-    expect(remove).toHaveBeenCalledWith([operation.storagePath]);
+    expect(remove).toHaveBeenCalledWith([storyItem.storagePath, postItem.storagePath]);
     expect(readPendingImageOperation()).toBeNull();
   });
 
-  it('recognizes a successful finalization after a lost upload response', async () => {
+  it('keeps the capture and removes unattached uploads when extra images cannot be attached', async () => {
     const { client, remove } = createImageClient({
-      uploadResult: { data: null, error: new Error('response lost') },
+      confirmResult: { data: [], error: null },
+      insertResult: { data: null, error: new Error('insert failed') },
     });
 
-    await expect(saveImageCapture(client, operation, draft, file)).resolves.toEqual({
-      error: null,
-      saved: true,
-    });
-    expect(remove).not.toHaveBeenCalled();
+    const result = await saveImageCapture(client, operationOf([storyItem, postItem]), draft);
+
+    expect(result.saved).toBe(true);
+    expect(result.warning).toContain('saved with 1 of 2 images');
+    expect(remove).toHaveBeenCalledWith([postItem.storagePath]);
+    expect(readPendingImageOperation()).toBeNull();
+  });
+
+  it('refuses more than the per-capture image limit before uploading', async () => {
+    const { client, upload } = createImageClient();
+    const many = Array.from({ length: 11 }, (_, index) =>
+      item(`k${index}`, post, `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`),
+    );
+
+    const result = await saveImageCapture(client, operationOf(many), draft);
+
+    expect(result.saved).toBe(false);
+    expect(result.error).toContain('up to 10 images');
+    expect(upload).not.toHaveBeenCalled();
   });
 });

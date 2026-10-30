@@ -194,4 +194,37 @@ describe('image reconciliation safety', () => {
     expect(backend.remove).not.toHaveBeenCalled();
     expect(readPendingImageOperation()).toBeNull();
   });
+
+  it('removes only the unreferenced objects of a multi-image marker', async () => {
+    const cover = `${userId}/capture-m/cover.png`;
+    const attached = `${userId}/capture-m/second.png`;
+    const orphan = `${userId}/capture-m/third.png`;
+    rememberPendingImageOperation(
+      {
+        additionalPaths: [attached, orphan],
+        attachmentId: 'cover',
+        captureId: 'capture-m',
+        createdAt: old,
+        storagePath: cover,
+        userId,
+      },
+      new Date(old),
+    );
+    const backend = createFakeImageBackend(
+      [
+        { capture_id: 'capture-m', id: 'cover', storage_path: cover, user_id: userId },
+        { capture_id: 'capture-m', id: 'second', storage_path: attached, user_id: userId },
+      ],
+      [
+        { created_at: old, path: cover },
+        { created_at: old, path: attached },
+        { created_at: old, path: orphan },
+      ],
+    );
+
+    await reconcileImageStorage(backend.client, userId, { now: clock });
+
+    expect(backend.removedPaths).toEqual([orphan]);
+    expect(readPendingImageOperation()).toBeNull();
+  });
 });

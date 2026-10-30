@@ -6,7 +6,7 @@ import { safeFavicon } from '../linkPreview/linkPreview';
 import { CaptureRow } from './CaptureRow';
 import { captureTitle, displayUrl, domainOf, groupByDay, isUntitledLink } from './listFormat';
 import type { CaptureSummary } from './useCaptureList';
-import { thumbnailKey, thumbnailSource } from './useThumbnails';
+import { imageCount, thumbnailKey, thumbnailSource } from './useThumbnails';
 
 type CaptureRiverProps = {
   captures: CaptureSummary[];
@@ -73,6 +73,7 @@ export function CaptureRiver({
                     onToggle: () => onToggleFavorite(capture),
                   }}
                   href={`/captures/${capture.id}`}
+                  imageCount={imageCount(capture)}
                   key={capture.id}
                   kind={capture.kind}
                   section={details.path}

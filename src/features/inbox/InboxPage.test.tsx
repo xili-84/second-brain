@@ -30,7 +30,14 @@ describe('inbox list', () => {
           title: 'Long note title',
         },
         {
-          attachments: [{ storage_path: 'user/image-id/attachment.png' }],
+          attachments: [
+            { created_at: '2026-07-24T10:00:00.002Z', storage_path: 'user/image-id/third.png' },
+            {
+              created_at: '2026-07-24T10:00:00.000Z',
+              storage_path: 'user/image-id/attachment.png',
+            },
+            { created_at: '2026-07-24T10:00:00.001Z', storage_path: 'user/image-id/second.png' },
+          ],
           content: 'Private image note that should stay hidden',
           created_at: '2026-07-24T10:00:00.000Z',
           id: 'image-id',
@@ -88,13 +95,16 @@ describe('inbox list', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(storageFrom).toHaveBeenCalledWith('capture-images');
     expect(createSignedUrls).toHaveBeenCalledTimes(1);
+    // Only the cover (oldest) image is signed; the rest show as a "+N" badge.
     expect(createSignedUrls).toHaveBeenCalledWith(['user/image-id/attachment.png'], 3600);
+    expect(screen.getByText('+2')).toBeVisible();
+    expect(screen.getByText('3 images')).toHaveClass('visually-hidden');
     expect(screen.getByRole('link', { name: 'Open Reference' })).toHaveAttribute(
       'href',
       '/captures/link-id',
     );
     expect(select).toHaveBeenCalledWith(
-      'id, kind, title, content, source_url, created_at, is_favorite, attachments(storage_path), capture_tags(tags(id, name)), link_title, link_description, link_site_name, link_image_path, link_favicon, link_preview_status',
+      'id, kind, title, content, source_url, created_at, is_favorite, attachments(storage_path, created_at), capture_tags(tags(id, name)), link_title, link_description, link_site_name, link_image_path, link_favicon, link_preview_status',
     );
     expect(eq).toHaveBeenCalledWith('status', 'inbox');
     expect(order).toHaveBeenCalledWith('created_at', { ascending: false });
