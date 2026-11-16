@@ -8,6 +8,8 @@ import { TopBar } from '../../components/TopBar';
 
 import { useAuth } from '../auth/authContext';
 import { loadPendingSharedImage, pendingSharedImages } from '../share-target/nativeShare';
+import { FileTray } from '../files/FileTray';
+import { useFileDrafts } from '../files/useFileDrafts';
 import { usePendingShare } from '../share-target/pendingShareContext';
 import {
   createDraftFromShare,
@@ -29,6 +31,7 @@ import {
   saveImageCapture,
   type ImageCaptureOperation,
 } from './imageCapture';
+import { saveFileCapture } from './fileCapture';
 import { ImageTray } from './images/ImageTray';
 import { useImageDrafts } from './images/useImageDrafts';
 import { requestLinkPreview } from '../linkPreview/linkPreview';
@@ -44,6 +47,7 @@ export function QuickCapturePage() {
   const [hasSaved, setHasSaved] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
   const drafts = useImageDrafts();
+  const fileDrafts = useFileDrafts();
   /**
    * The save operation for the current images. It survives a failed attempt, so a retry reuses
    * the IDs (and skips the uploads) of images that are already stored.
@@ -55,6 +59,7 @@ export function QuickCapturePage() {
   const [tagNames, setTagNames] = useState<string[]>([]);
   const tagLibrary = useTagLibrary(client, Boolean(session));
   const { addFiles, reset: resetImages } = drafts;
+  const { addFiles: addAttachments, reset: resetAttachments } = fileDrafts;
 
   useEffect(() => {
     if (!pendingShare || pendingShare.id === loadedShareId.current) {
@@ -68,6 +73,7 @@ export function QuickCapturePage() {
     setWarning(null);
     setHasSaved(false);
     resetImages([]);
+    resetAttachments([]);
     setImageOperation(null);
     setUploadedKeys(new Set());
 
@@ -76,17 +82,24 @@ export function QuickCapturePage() {
       return;
     }
 
+    const isFileShare = pendingShare.kind === 'file';
+
     setDraft({
       ...createEmptyDraft(),
       content: pendingShare.text,
-      kind: 'image',
+      kind: isFileShare ? 'file' : 'image',
       title: pendingShare.title,
     });
 
     const sharedImages = pendingSharedImages(pendingShare);
 
     if (sharedImages.length === 0) {
-      setError(pendingShare.error ?? 'The shared image could not be prepared.');
+      setError(
+        pendingShare.error ??
+          (isFileShare
+            ? 'The shared file could not be prepared.'
+            : 'The shared image could not be prepared.'),
+      );
       return;
     }
 
@@ -95,7 +108,7 @@ export function QuickCapturePage() {
     }
 
     if (!session?.user.id) {
-      setError('Sign in before preparing the shared image.');
+      setError(`Sign in before preparing the shared ${isFileShare ? 'file' : 'image'}.`);
       return;
     }
 
@@ -104,7 +117,7 @@ export function QuickCapturePage() {
     void (async () => {
       const files: File[] = [];
       let unreadable = 0;
-      // One at a time: each image crosses the native bridge in chunks.
+      // One at a time: each file crosses the native bridge in chunks.
       for (const image of sharedImages) {
         try {
           files.push((await loadPendingSharedImage(pendingShare.id, image)).file);
@@ -115,8 +128,11 @@ export function QuickCapturePage() {
       if (!isActive) {
         return;
       }
-      // Android already checked the type, size and file signature of each shared image.
-      const { rejected } = await addFiles(files, { trusted: true });
+      // Android already checked the type, size and file signature of each shared image; shared
+      // files of any type are only checked for size and count.
+      const { rejected } = isFileShare
+        ? addAttachments(files)
+        : await addFiles(files, { trusted: true });
       if (!isActive) {
         return;
       }
@@ -125,8 +141,8 @@ export function QuickCapturePage() {
         ...(unreadable
           ? [
               unreadable === sharedImages.length
-                ? 'The temporary shared image could not be opened. Please share it again.'
-                : `${unreadable} shared ${unreadable === 1 ? 'image' : 'images'} could not be opened.`,
+                ? `The temporary shared ${isFileShare ? 'file' : 'image'} could not be opened. Please share it again.`
+                : `${unreadable} shared ${isFileShare ? 'file' : 'image'}${unreadable === 1 ? '' : 's'} could not be opened.`,
             ]
           : []),
         ...rejected,
@@ -140,7 +156,7 @@ export function QuickCapturePage() {
       isActive = false;
       setIsLoadingShare(false);
     };
-  }, [addFiles, pendingShare, resetImages, session?.user.id]);
+  }, [addAttachments, addFiles, pendingShare, resetAttachments, resetImages, session?.user.id]);
 
   function updateDraft(update: Partial<CaptureDraft>) {
     setDraft((current) => ({ ...current, ...update }));
@@ -165,6 +181,15 @@ export function QuickCapturePage() {
     }
   }
 
+  function chooseFiles(files: File[]) {
+    setMessage(null);
+    setError(null);
+    const { rejected } = fileDrafts.addFiles(files);
+    if (rejected.length) {
+      setError(rejected.join(' '));
+    }
+  }
+
   function removeImage(key: string) {
     const stored = imageOperation?.items.find((item) => item.key === key);
     // An image already uploaded in a failed attempt is removed from Storage right away.
@@ -177,11 +202,13 @@ export function QuickCapturePage() {
       });
     }
     drafts.remove(key);
+    fileDrafts.remove(key);
     setError(null);
   }
 
   function resetImageState() {
     resetImages([]);
+    resetAttachments([]);
     setImageOperation(null);
     setUploadedKeys(new Set());
   }
@@ -227,18 +254,22 @@ export function QuickCapturePage() {
     resetImageState();
   }
 
-  /** The operation for the images on screen, reusing upload slots from an earlier attempt. */
-  function operationForImages(userId: string): ImageCaptureOperation {
+  /** The operation for the images or files on screen, reusing upload slots from an earlier attempt. */
+  function operationForImages(
+    userId: string,
+    mode: 'file' | 'image' = 'image',
+  ): ImageCaptureOperation {
     const previous = imageOperation?.userId === userId ? imageOperation : null;
     const captureId = previous?.captureId ?? crypto.randomUUID();
     const reused = new Map(previous?.items.map((item) => [item.key, item]));
-    const items = drafts.images.flatMap((image) => {
+    const picked = mode === 'file' ? fileDrafts.files : drafts.images;
+    const items = picked.flatMap((image) => {
       if (!image.file) {
         return [];
       }
       return [
         reused.get(image.key) ??
-          createUploadItems(userId, captureId, [{ file: image.file, key: image.key }])[0]!,
+          createUploadItems(userId, captureId, [{ file: image.file, key: image.key }], mode)[0]!,
       ];
     });
     return {
@@ -268,6 +299,11 @@ export function QuickCapturePage() {
       return;
     }
 
+    if (draft.kind === 'file' && fileDrafts.files.length === 0) {
+      setError('Choose at least one file before saving.');
+      return;
+    }
+
     setError(null);
     setMessage(null);
     setWarning(null);
@@ -275,11 +311,13 @@ export function QuickCapturePage() {
 
     let savedCaptureId = draft.id;
 
-    if (draft.kind === 'image') {
-      const operation = operationForImages(session.user.id);
+    if (draft.kind === 'image' || draft.kind === 'file') {
+      const isFiles = draft.kind === 'file';
+      const operation = operationForImages(session.user.id, isFiles ? 'file' : 'image');
+      const tray = isFiles ? fileDrafts : drafts;
       setImageOperation(operation);
       savedCaptureId = operation.captureId;
-      drafts.setStatuses(
+      tray.setStatuses(
         Object.fromEntries(
           operation.items.map((item) => [
             item.key,
@@ -287,10 +325,12 @@ export function QuickCapturePage() {
           ]),
         ),
       );
-      const result = await saveImageCapture(client, operation, draft, {
-        onItem: drafts.setStatus,
-        uploadedKeys,
-      });
+      const result = await (isFiles ? saveFileCapture : saveImageCapture)(
+        client,
+        operation,
+        draft,
+        { onItem: tray.setStatus, uploadedKeys },
+      );
 
       setUploadedKeys(new Set(result.uploadedKeys));
 
@@ -357,7 +397,9 @@ export function QuickCapturePage() {
 
   const isValidatingImage = drafts.isValidating || isLoadingShare;
   const isBusy = isSubmitting || isValidatingImage;
-  const uploading = drafts.images.filter((image) => image.status);
+  const uploading = (draft.kind === 'file' ? fileDrafts.files : drafts.images).filter(
+    (image) => image.status,
+  );
   const uploadLabel =
     isSubmitting && uploading.length
       ? uploading.every((image) => image.status === 'done')
@@ -447,6 +489,31 @@ export function QuickCapturePage() {
             </label>
           )}
 
+          {draft.kind === 'file' && (
+            <>
+              <FileTray
+                disabled={isSubmitting || isLoadingShare}
+                files={fileDrafts.files}
+                onAdd={chooseFiles}
+                onMove={fileDrafts.move}
+                onRemove={removeImage}
+              />
+              <textarea
+                aria-label="Note"
+                className="composer__body composer__body--short"
+                disabled={isSubmitting}
+                onChange={(event) => updateDraft({ content: event.target.value })}
+                placeholder={
+                  fileDrafts.files.length > 1
+                    ? 'Why keep these files? (optional)'
+                    : 'Why keep this file? (optional)'
+                }
+                rows={4}
+                value={draft.content}
+              />
+            </>
+          )}
+
           {draft.kind === 'image' && (
             <>
               <ImageTray
@@ -500,7 +567,9 @@ export function QuickCapturePage() {
               type="submit"
             >
               {isValidatingImage
-                ? 'Checking images…'
+                ? draft.kind === 'file'
+                  ? 'Preparing files…'
+                  : 'Checking images…'
                 : isSubmitting
                   ? (uploadLabel ?? 'Saving…')
                   : 'Save to inbox'}

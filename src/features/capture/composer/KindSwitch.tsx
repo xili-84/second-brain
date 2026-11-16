@@ -1,4 +1,4 @@
-import { FileText, Image, Link2 } from 'lucide-react';
+import { FileText, Image, Link2, Paperclip } from 'lucide-react';
 
 import { SegmentedControl, type SegmentedOption } from '../../../components/SegmentedControl';
 import type { CaptureKind } from '../captureDraft';
@@ -7,6 +7,7 @@ const kinds: readonly SegmentedOption<CaptureKind>[] = [
   { icon: FileText, label: 'Note', value: 'note' },
   { icon: Link2, label: 'Link', value: 'link' },
   { icon: Image, label: 'Image', value: 'image' },
+  { icon: Paperclip, label: 'File', value: 'file' },
 ];
 
 type KindSwitchProps = {

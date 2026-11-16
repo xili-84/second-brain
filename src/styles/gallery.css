@@ -577,3 +577,163 @@
     animation: none;
   }
 }
+
+/* ---------- File attachments ---------- */
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.article-files {
+  margin-top: var(--space-4);
+}
+
+.article-files .file-list {
+  margin-top: 0;
+}
+
+.article-files .file-card:first-child {
+  border-top: 0;
+}
+
+.file-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: var(--rule-hair) solid var(--rule);
+}
+
+.file-card:first-child {
+  border-top: var(--rule-hair) solid var(--rule);
+}
+
+.file-card__icon {
+  display: flex;
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: var(--rule-hair) solid var(--rule);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  color: var(--ink);
+}
+
+.file-card__icon .icon {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+/* The one family that asks for care before it is opened gets the accent. */
+.file-card--apk .file-card__icon {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.file-card__body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+/* Long names wrap to two lines instead of hiding the part that tells files apart. */
+.file-card__name {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink);
+  font: var(--text-title);
+  letter-spacing: var(--tracking-title);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.file-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-3);
+  font: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.file-card__type {
+  color: var(--ink-2);
+  font: var(--text-kicker);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+}
+
+.file-card__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0;
+}
+
+.file-card__btn:disabled {
+  opacity: 0.4;
+}
+
+.file-card__status {
+  display: inline-flex;
+  width: var(--tap);
+  height: var(--tap);
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-2);
+}
+
+.file-card--done .file-card__status {
+  color: var(--success);
+}
+
+.file-card--failed .file-card__status {
+  color: var(--danger);
+}
+
+.file-card--failed {
+  background: var(--danger-soft);
+}
+
+.file-card--uploading .file-card__name {
+  color: var(--ink-2);
+}
+
+.picker--row {
+  margin-top: var(--space-3);
+}
+
+/* A file capture's row in the inbox shows a type glyph where an image would sit. */
+.row__thumb--file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-2);
+}
+
+.row__thumb--file .icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.picker--row {
+  flex-direction: row;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.picker--row .picker__icon {
+  width: 2.25rem;
+  height: 2.25rem;
+}

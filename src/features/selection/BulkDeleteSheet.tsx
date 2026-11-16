@@ -4,6 +4,8 @@ import { Sheet } from '../../components/Sheet';
 
 type BulkDeleteSheetProps = {
   count: number;
+  /** Selected captures that hold private files (any type) rather than images. */
+  fileCount?: number;
   imageCount: number;
   onCancel: () => void;
   onConfirm: () => void;
@@ -18,6 +20,7 @@ function captures(count: number) {
 /** One confirmation for the whole selection. Cancel has initial focus, so Enter is safe. */
 export function BulkDeleteSheet({
   count,
+  fileCount = 0,
   imageCount,
   onCancel,
   onConfirm,
@@ -31,6 +34,12 @@ export function BulkDeleteSheet({
       : imageCount === 1
         ? ', including 1 private image'
         : `, including ${imageCount} private images`;
+  const files =
+    fileCount === 0
+      ? ''
+      : fileCount === 1
+        ? `${images ? ' and' : ', including'} 1 capture with private files`
+        : `${images ? ' and' : ', including'} ${fileCount} captures with private files`;
 
   return (
     <Sheet
@@ -49,7 +58,8 @@ export function BulkDeleteSheet({
         Delete {captures(count)}?
       </h2>
       <p className="sheet__text" id="bulk-delete-text">
-        {count === 1 ? 'It is' : 'They are'} removed permanently{images}. This can’t be undone.
+        {count === 1 ? 'It is' : 'They are'} removed permanently{images}
+        {files}. This can’t be undone.
       </p>
       <button
         className="btn btn--danger btn--lg btn--block"

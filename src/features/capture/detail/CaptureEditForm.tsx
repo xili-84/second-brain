@@ -24,7 +24,7 @@ export function CaptureEditForm({
   onSubmit,
   savingLabel = null,
 }: CaptureEditFormProps) {
-  const hasText = draft.kind === 'note' || draft.kind === 'image';
+  const hasText = draft.kind === 'note' || draft.kind === 'image' || draft.kind === 'file';
 
   return (
     <form className="composer" onSubmit={onSubmit}>
@@ -44,7 +44,7 @@ export function CaptureEditForm({
           className="composer__body"
           disabled={isBusy}
           onChange={(event) => onChange({ content: event.target.value })}
-          placeholder={draft.kind === 'image' ? 'Note (optional)' : 'Note'}
+          placeholder={draft.kind === 'image' || draft.kind === 'file' ? 'Note (optional)' : 'Note'}
           rows={10}
           value={draft.content}
         />

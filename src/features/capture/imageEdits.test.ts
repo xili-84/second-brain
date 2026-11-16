@@ -204,3 +204,60 @@ describe('applyImageEdits', () => {
     expect(upload).not.toHaveBeenCalled();
   });
 });
+
+describe('applyImageEdits for files', () => {
+  it('uses file wording and the file cap, and keeps the original extension in the path', async () => {
+    const upload = vi.fn().mockResolvedValue({ data: {}, error: null });
+    const remove = vi.fn().mockResolvedValue({ data: [], error: null });
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    const builder = {
+      delete: vi.fn(),
+      eq: vi.fn(),
+      in: vi.fn(),
+      insert,
+      select: vi.fn(),
+      update: vi.fn(),
+    };
+    for (const method of ['delete', 'eq', 'select', 'update'] as const) {
+      builder[method].mockReturnValue(builder);
+    }
+    builder.in.mockResolvedValue({ data: [], error: null });
+    const client = {
+      from: vi.fn().mockReturnValue(builder),
+      storage: { from: vi.fn().mockReturnValue({ remove, upload }) },
+    } as unknown as SecondBrainClient;
+
+    const empty = await applyImageEdits(client, 'u', 'c', [], [], { mode: 'file' });
+    expect(empty.error).toBe('Keep at least one file, or delete the capture instead.');
+
+    const tooMany = await applyImageEdits(
+      client,
+      'u',
+      'c',
+      [],
+      Array.from({ length: 11 }, (_, index) => ({
+        file: new File(['x'], `f${index}.txt`, { type: 'text/plain' }),
+        key: `k${index}`,
+        kind: 'new' as const,
+      })),
+      { mode: 'file' },
+    );
+    expect(tooMany.error).toBe('A capture can hold up to 10 files.');
+
+    await applyImageEdits(
+      client,
+      'u',
+      'c',
+      [],
+      [
+        {
+          file: new File(['x'], 'notes.TXT', { type: 'text/plain' }),
+          key: 'k',
+          kind: 'new' as const,
+        },
+      ],
+      { mode: 'file' },
+    );
+    expect(upload.mock.calls[0]![0]).toMatch(/^u\/c\/[0-9a-f-]{36}\.txt$/u);
+  });
+});

@@ -35,6 +35,11 @@ import org.json.JSONObject;
 @CapacitorPlugin(name = "ShareReceiver")
 public final class ShareReceiverPlugin extends Plugin {
     private static final long MAX_IMAGE_BYTES = 10L * 1024L * 1024L;
+    /** Matches MAX_FILE_BYTES in the web app (the Supabase free-plan object limit). */
+    private static final long MAX_FILE_BYTES = 50L * 1024L * 1024L;
+    /** Matches MAX_FILES_PER_CAPTURE in the web app. */
+    private static final int MAX_SHARED_FILES = 10;
+    private static final String DEFAULT_FILE_MIME = "application/octet-stream";
     /** Matches MAX_IMAGES_PER_CAPTURE in the web app. */
     private static final int MAX_SHARED_IMAGES = 10;
     private static final int IMAGE_CHUNK_BYTES = 192 * 1024;
@@ -52,6 +57,7 @@ public final class ShareReceiverPlugin extends Plugin {
     private static final String KEY_RECEIVED_AT = "received_at";
     private static final String KEY_TEXT = "text";
     private static final String KEY_TITLE = "title";
+    private static final String KIND_FILE = "file";
     private static final String KIND_IMAGE = "image";
     private static final String KIND_TEXT = "text";
 
@@ -170,15 +176,38 @@ public final class ShareReceiverPlugin extends Plugin {
 
         String mimeType = intent.getType();
 
-        if (!isMultiple && "text/plain".equals(mimeType)) {
-            receiveText(intent);
-        } else if (mimeType != null && mimeType.startsWith("image/")) {
-            receiveImages(intent, readStreamUris(intent, isMultiple));
-        } else {
+        if (mimeType == null) {
             return;
         }
 
+        List<Uri> streams = readStreamUris(intent, isMultiple);
+        boolean hasText = !TextUtils.isEmpty(readText(intent, Intent.EXTRA_TEXT));
+
+        if (!isMultiple && "text/plain".equals(mimeType) && (streams.isEmpty() || hasText)) {
+            // Shared text or a link. (A .txt file from a file manager carries a stream and no text,
+            // so it falls through to the file path below.)
+            receiveText(intent);
+        } else if (streams.isEmpty() && (hasText || !TextUtils.isEmpty(readText(intent, Intent.EXTRA_SUBJECT)))) {
+            // A sender that declares a generic type but only gives text.
+            receiveText(intent);
+        } else if (!streams.isEmpty() && allSupportedImages(intent, streams)) {
+            receiveImages(intent, streams);
+        } else {
+            receiveFiles(intent, streams);
+        }
+
         intent.setAction(null);
+    }
+
+    /** True when every shared item is a JPEG, PNG or WebP (those keep the stricter image path). */
+    private boolean allSupportedImages(Intent intent, List<Uri> uris) {
+        for (Uri uri : uris) {
+            if (!isSupportedImageMime(resolveImageMimeType(intent, uri))) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void receiveText(Intent intent) {
@@ -280,6 +309,149 @@ public final class ShareReceiverPlugin extends Plugin {
         replacePendingShare(share);
     }
 
+    /**
+     * Copies every shared item of any type into private storage: content:// from another app, at
+     * most 50 MiB each, at most MAX_SHARED_FILES. Items that fail are skipped (and reported) so one
+     * bad item does not lose the rest. Nothing is saved until the user confirms in the app.
+     */
+    private void receiveFiles(Intent intent, List<Uri> sourceUris) {
+        String title = firstNonBlank(
+                readText(intent, Intent.EXTRA_TITLE),
+                readText(intent, Intent.EXTRA_SUBJECT)
+        );
+        String text = readText(intent, Intent.EXTRA_TEXT);
+
+        if (sourceUris.isEmpty()) {
+            replacePendingShare(fileErrorShare(title, text, "The sharing app did not provide a file."));
+            return;
+        }
+
+        String id = UUID.randomUUID().toString();
+        JSArray files = new JSArray();
+        String firstProblem = null;
+        int skipped = 0;
+        int overLimit = 0;
+
+        for (Uri sourceUri : sourceUris) {
+            if (files.length() >= MAX_SHARED_FILES) {
+                overLimit += 1;
+                continue;
+            }
+
+            try {
+                files.put(copySharedFile(intent, sourceUri, id, files.length()));
+                continue;
+            } catch (SharedImageException error) {
+                skipped += 1;
+
+                if (firstProblem == null) {
+                    firstProblem = error.getMessage();
+                }
+            }
+        }
+
+        if (files.length() == 0) {
+            replacePendingShare(fileErrorShare(
+                    title,
+                    text,
+                    firstProblem == null ? "The shared files could not be prepared." : firstProblem
+            ));
+            return;
+        }
+
+        JSObject share = baseShare(KIND_FILE, title, text);
+        share.put(KEY_ID, id);
+        share.put(KEY_IMAGES, files);
+
+        try {
+            share.put("image", files.getJSONObject(0));
+        } catch (JSONException ignored) {
+            // The list was just built; index 0 always exists here.
+        }
+
+        List<String> notes = new ArrayList<>();
+
+        if (skipped > 0) {
+            notes.add(skipped + (skipped == 1 ? " shared item was skipped: " : " shared items were skipped: ")
+                    + firstProblem);
+        }
+
+        if (overLimit > 0) {
+            notes.add("Only the first " + MAX_SHARED_FILES + " files were kept.");
+        }
+
+        if (!notes.isEmpty()) {
+            share.put(KEY_ERROR, TextUtils.join(" ", notes));
+        }
+
+        replacePendingShare(share);
+    }
+
+    private JSObject copySharedFile(Intent intent, Uri sourceUri, String shareId, int index)
+            throws SharedImageException {
+        if (!isAllowedSourceUri(sourceUri)) {
+            throw new SharedImageException("The sharing app did not provide a readable file.");
+        }
+
+        String mimeType = resolveFileMimeType(intent, sourceUri);
+        String displayName = safeFileDisplayName(readDisplayName(sourceUri), index);
+        File pendingFile;
+
+        try {
+            pendingFile = copyToPrivateCache(sourceUri, shareId + "-" + index, "bin", MAX_FILE_BYTES);
+        } catch (ImageTooLargeException error) {
+            throw new SharedImageException(displayName + " is larger than 50 MB.");
+        } catch (IOException | SecurityException error) {
+            throw new SharedImageException("The shared file could not be copied. Please share it again.");
+        }
+
+        JSObject file = new JSObject();
+        file.put("index", index);
+        file.put("mimeType", mimeType);
+        file.put("name", displayName);
+        file.put("size", pendingFile.length());
+        file.put("uri", Uri.fromFile(pendingFile).toString());
+        return file;
+    }
+
+    private JSObject fileErrorShare(String title, String text, String message) {
+        JSObject share = baseShare(KIND_FILE, title, text);
+        share.put(KEY_ERROR, message);
+        return share;
+    }
+
+    /** The provider's own type wins; a generic or missing type becomes application/octet-stream. */
+    private String resolveFileMimeType(Intent intent, Uri sourceUri) {
+        String providerType = null;
+
+        try {
+            providerType = getContext().getContentResolver().getType(sourceUri);
+        } catch (RuntimeException ignored) {
+            // Fall back to the type the sharing app declared.
+        }
+
+        if (isSpecificMime(providerType)) {
+            return providerType;
+        }
+
+        String intentType = intent.getType();
+        return isSpecificMime(intentType) ? intentType : DEFAULT_FILE_MIME;
+    }
+
+    private static boolean isSpecificMime(String mimeType) {
+        return !TextUtils.isEmpty(mimeType) && !mimeType.contains("*") && mimeType.indexOf('/') > 0;
+    }
+
+    private static String safeFileDisplayName(String value, int index) {
+        String leafName = TextUtils.isEmpty(value) ? "" : new File(value).getName().trim();
+
+        if (TextUtils.isEmpty(leafName)) {
+            return "shared-file-" + (index + 1);
+        }
+
+        return leafName.length() > 255 ? leafName.substring(leafName.length() - 255) : leafName;
+    }
+
     private JSObject copySharedImage(Intent intent, Uri sourceUri, String shareId, int index)
             throws SharedImageException {
         if (!isAllowedSourceUri(sourceUri)) {
@@ -301,7 +473,12 @@ public final class ShareReceiverPlugin extends Plugin {
         File pendingFile;
 
         try {
-            pendingFile = copyToPrivateCache(sourceUri, shareId + "-" + index, mimeType);
+            pendingFile = copyToPrivateCache(
+                    sourceUri,
+                    shareId + "-" + index,
+                    extensionFor(mimeType),
+                    MAX_IMAGE_BYTES
+            );
         } catch (ImageTooLargeException error) {
             throw new SharedImageException("The shared image is larger than 10 MiB.");
         } catch (IOException | SecurityException error) {
@@ -496,7 +673,7 @@ public final class ShareReceiverPlugin extends Plugin {
         }
     }
 
-    private File copyToPrivateCache(Uri sourceUri, String id, String mimeType)
+    private File copyToPrivateCache(Uri sourceUri, String id, String extension, long maxBytes)
             throws IOException, ImageTooLargeException {
         File directory = new File(getContext().getFilesDir(), PENDING_DIRECTORY);
 
@@ -504,7 +681,7 @@ public final class ShareReceiverPlugin extends Plugin {
             throw new IOException("Could not create the private pending-share directory.");
         }
 
-        File target = new File(directory, id + "." + extensionFor(mimeType));
+        File target = new File(directory, id + "." + extension);
         long totalBytes = 0L;
 
         try (
@@ -521,7 +698,7 @@ public final class ShareReceiverPlugin extends Plugin {
             while ((count = input.read(buffer)) != -1) {
                 totalBytes += count;
 
-                if (totalBytes > MAX_IMAGE_BYTES) {
+                if (totalBytes > maxBytes) {
                     throw new ImageTooLargeException();
                 }
 

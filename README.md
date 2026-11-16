@@ -2,7 +2,7 @@
 
 Private, low-friction knowledge capture: **capture instantly, organize later.**
 
-Notes, links and images go into an **Inbox**, are reviewed into **Reviewed** or **Archived**, and
+Notes, links, images and files (any type, up to 50 MB each) go into an **Inbox**, are reviewed into **Reviewed** or **Archived**, and
 can be deleted when done. One private account is shared by the web app (Windows and other browsers)
 and the Android app.
 
@@ -117,6 +117,10 @@ Pending (written, not yet applied): `202610260004_search_link_previews.sql` make
 `search_captures` also match link preview titles and descriptions (same security: authenticated
 callers only, own rows only). Until it is applied, full-text search simply does not look at page
 titles; the substring fallback already includes them when the preview columns exist.
+
+Pending (written, not yet applied): `202611160001_file_attachments.sql` lifts the private bucket to
+50 MB with no image-only filter, lets attachments hold any MIME type, and allows captures of kind
+`file`. Apply it before using file attachments; images and notes work without it.
 
 ## Link previews
 

@@ -1,4 +1,5 @@
 import type { SecondBrainClient } from '../../lib/supabase/client';
+import { fileStoragePath } from '../files/fileInfo';
 import type { CaptureDraft } from './captureDraft';
 
 export const IMAGE_BUCKET = 'capture-images';
@@ -100,6 +101,8 @@ export function createUploadItems(
   userId: string,
   captureId: string,
   images: { file: File; key: string }[],
+  /** `file` slots keep the original extension instead of one picked from an image type. */
+  mode: 'file' | 'image' = 'image',
 ): ImageUploadItem[] {
   return images.map(({ file, key }) => {
     const attachmentId = crypto.randomUUID();
@@ -108,7 +111,10 @@ export function createUploadItems(
       attachmentId,
       file,
       key,
-      storagePath: imageStoragePath(userId, captureId, attachmentId, mimeType),
+      storagePath:
+        mode === 'file'
+          ? fileStoragePath(userId, captureId, attachmentId, file.name)
+          : imageStoragePath(userId, captureId, attachmentId, mimeType),
     };
   });
 }

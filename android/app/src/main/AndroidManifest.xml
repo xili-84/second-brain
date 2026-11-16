@@ -39,25 +39,22 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
 
+            <!--
+                Anything else shared from a file manager or another app: images (checked as before),
+                documents, archives, APKs and so on. Each item is copied to private storage first
+                and shown for review; nothing is saved until the user confirms.
+            -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/jpeg" />
-                <data android:mimeType="image/png" />
-                <data android:mimeType="image/webp" />
+                <data android:mimeType="*/*" />
             </intent-filter>
 
-            <!--
-                Several images at once (for example a story and a feed post). Galleries send
-                "image/*" when the selection mixes formats; each image is checked on its own.
-            -->
+            <!-- Several items at once (a story and a feed image, or a few files). -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/jpeg" />
-                <data android:mimeType="image/png" />
-                <data android:mimeType="image/webp" />
-                <data android:mimeType="image/*" />
+                <data android:mimeType="*/*" />
             </intent-filter>
 
         </activity>

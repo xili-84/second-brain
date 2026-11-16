@@ -45,6 +45,9 @@ import { ImageTray } from './images/ImageTray';
 import { ImageViewer } from './images/ImageViewer';
 import { storedDrafts, useImageDrafts } from './images/useImageDrafts';
 import { isNativeImageSaveAvailable, saveImageToPhone } from './nativeImageSaver';
+import { AttachedFiles } from '../files/AttachedFiles';
+import { FileTray } from '../files/FileTray';
+import { storedFileDrafts, useFileDrafts } from '../files/useFileDrafts';
 import { FavoriteButton } from '../tags/FavoriteButton';
 import { TagEditor } from '../tags/TagEditor';
 import type { EmbeddedCaptureTags } from '../tags/tagNames';
@@ -88,7 +91,7 @@ async function signAll(
 }
 
 function isSupportedKind(kind: string): kind is CaptureKind {
-  return kind === 'note' || kind === 'link' || kind === 'image';
+  return kind === 'note' || kind === 'link' || kind === 'image' || kind === 'file';
 }
 
 function isSupportedStatus(status: string): status is CaptureStatus {
@@ -157,6 +160,7 @@ export function CaptureDetailPage() {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const drafts = useImageDrafts();
+  const fileDrafts = useFileDrafts();
   const [savingImageId, setSavingImageId] = useState<string | null>(null);
   const [savedImageIds, setSavedImageIds] = useState<ReadonlySet<string>>(new Set());
   const isSavingToPhoneRef = useRef(false);
@@ -281,6 +285,7 @@ export function CaptureDetailPage() {
     setError(null);
     setMessage(null);
     drafts.reset(capture.kind === 'image' ? storedDrafts(capture.attachments, imageUrls) : []);
+    fileDrafts.reset(capture.kind === 'file' ? storedFileDrafts(capture.attachments) : []);
     setIsEditing(true);
   }
 
@@ -292,7 +297,17 @@ export function CaptureDetailPage() {
     setError(null);
     setMessage(null);
     drafts.reset([]);
+    fileDrafts.reset([]);
     setIsEditing(false);
+  }
+
+  function addAttachedFiles(files: File[]) {
+    setError(null);
+    setMessage(null);
+    const { rejected } = fileDrafts.addFiles(files);
+    if (rejected.length) {
+      setError(rejected.join(' '));
+    }
   }
 
   async function addImages(files: File[]) {
@@ -318,7 +333,11 @@ export function CaptureDetailPage() {
       return;
     }
 
-    const editedImages: EditedImage[] = drafts.images.flatMap((image): EditedImage[] =>
+    const isFileCapture = capture.kind === 'file';
+    const tray = isFileCapture ? fileDrafts : drafts;
+    const editable: { attachment?: StoredImageAttachment; file?: File; key: string }[] =
+      isFileCapture ? fileDrafts.files : drafts.images;
+    const editedImages: EditedImage[] = editable.flatMap((image): EditedImage[] =>
       image.attachment
         ? [{ attachment: image.attachment, key: image.key, kind: 'stored' }]
         : image.file
@@ -326,10 +345,13 @@ export function CaptureDetailPage() {
           : [],
     );
     const imagesChanged =
-      capture.kind === 'image' && hasImageChanges(capture.attachments, editedImages);
+      (capture.kind === 'image' || isFileCapture) &&
+      hasImageChanges(capture.attachments, editedImages);
 
-    if (capture.kind === 'image' && editedImages.length === 0) {
-      setError('Keep at least one image, or delete the capture instead.');
+    if ((capture.kind === 'image' || isFileCapture) && editedImages.length === 0) {
+      setError(
+        `Keep at least one ${isFileCapture ? 'file' : 'image'}, or delete the capture instead.`,
+      );
       return;
     }
 
@@ -339,7 +361,9 @@ export function CaptureDetailPage() {
 
     const update = {
       content:
-        draft.kind === 'note' || draft.kind === 'image' ? draft.content.trim() || null : null,
+        draft.kind === 'note' || draft.kind === 'image' || draft.kind === 'file'
+          ? draft.content.trim() || null
+          : null,
       source_url: draft.kind === 'link' ? draft.sourceUrl.trim() : null,
       title: draft.title.trim() || null,
     };
@@ -359,7 +383,7 @@ export function CaptureDetailPage() {
       );
     } else if (imagesChanged) {
       const textSaved = withSortedAttachments({ ...capture, ...data });
-      drafts.setStatuses(
+      tray.setStatuses(
         Object.fromEntries(
           editedImages
             .filter((image) => image.kind === 'new')
@@ -372,12 +396,21 @@ export function CaptureDetailPage() {
         capture.id,
         capture.attachments,
         editedImages,
-        { onItem: drafts.setStatus },
+        { mode: isFileCapture ? 'file' : 'image', onItem: tray.setStatus },
       );
 
       if (!result.saved || !result.attachments) {
         setCapture(textSaved);
-        setError(`Text changes were saved, but ${result.error ?? 'the images were not changed.'}`);
+        setError(
+          `Text changes were saved, but ${result.error ?? `the ${isFileCapture ? 'files were' : 'images were'} not changed.`}`,
+        );
+      } else if (isFileCapture) {
+        const savedCapture = { ...textSaved, attachments: result.attachments };
+        setCapture(savedCapture);
+        setDraft(toDraft(savedCapture));
+        setMessage(result.warning ?? 'Changes saved. Files updated.');
+        fileDrafts.reset([]);
+        setIsEditing(false);
       } else {
         const savedCapture = { ...textSaved, attachments: result.attachments };
         const known = Object.fromEntries(
@@ -411,6 +444,7 @@ export function CaptureDetailPage() {
       setDraft(toDraft(savedCapture));
       setMessage('Changes saved.');
       drafts.reset([]);
+      fileDrafts.reset([]);
       setIsEditing(false);
       // A new address deserves a new preview.
       if (data.kind === 'link' && data.source_url !== capture.source_url) {
@@ -450,7 +484,11 @@ export function CaptureDetailPage() {
   }
 
   async function copyCaptureContent() {
-    if (!capture || (capture.kind !== 'note' && capture.kind !== 'image') || !capture.content) {
+    if (
+      !capture ||
+      (capture.kind !== 'note' && capture.kind !== 'image' && capture.kind !== 'file') ||
+      !capture.content
+    ) {
       return;
     }
 
@@ -487,7 +525,9 @@ export function CaptureDetailPage() {
     if (!result.ok && result.reason === 'storage') {
       // Close the sheet so the error is visible on the page; Delete can simply be tried again.
       setIsConfirmingDelete(false);
-      setError('The private image was not removed. Nothing else was deleted; please retry.');
+      setError(
+        `The private ${capture.kind === 'file' ? 'files were' : 'image was'} not removed. Nothing else was deleted; please retry.`,
+      );
       setPendingAction(null);
       return;
     }
@@ -495,8 +535,8 @@ export function CaptureDetailPage() {
     if (!result.ok) {
       setIsConfirmingDelete(false);
       setError(
-        capture.kind === 'image'
-          ? 'The image was removed, but its capture records still need cleanup. Please retry.'
+        capture.kind === 'image' || capture.kind === 'file'
+          ? `The ${capture.kind === 'file' ? 'files were' : 'image was'} removed, but its capture records still need cleanup. Please retry.`
           : 'The capture was not deleted. Please retry.',
       );
       setPendingAction(null);
@@ -619,8 +659,11 @@ export function CaptureDetailPage() {
 
   const statusDetails = captureStatusDetails[capture.status];
   const isBusy = pendingAction !== null || drafts.isValidating;
+  const isFileCapture = capture.kind === 'file';
   const isNativeApp = isNativeImageSaveAvailable();
-  const hasCopyableText = (capture.kind === 'note' || capture.kind === 'image') && capture.content;
+  const hasCopyableText =
+    (capture.kind === 'note' || capture.kind === 'image' || capture.kind === 'file') &&
+    capture.content;
   const displayTitle =
     capture.title?.trim() ||
     (capture.kind === 'link' ? linkPreview.fields.link_title?.trim() : null) ||
@@ -630,7 +673,9 @@ export function CaptureDetailPage() {
     url: imageUrls[attachment.id] ?? null,
   }));
   const imageAltText = capture.title || 'Saved image';
-  const uploading = drafts.images.filter((image) => image.status);
+  const uploading = (isFileCapture ? fileDrafts.files : drafts.images).filter(
+    (image) => image.status,
+  );
   const uploadProgress =
     pendingAction === 'save' && uploading.length
       ? `Uploading ${uploading.filter((image) => image.status === 'done').length} of ${uploading.length}…`
@@ -715,6 +760,23 @@ export function CaptureDetailPage() {
         </div>
       )}
 
+      {isFileCapture && !isEditing && (
+        <section aria-label="Files" className="article-files">
+          {capture.attachments.length > 0 ? (
+            <AttachedFiles
+              attachments={capture.attachments}
+              client={client}
+              onError={setError}
+              onMessage={setMessage}
+            />
+          ) : (
+            <Notice tone="info">
+              This file capture is incomplete. You can delete it and try again.
+            </Notice>
+          )}
+        </section>
+      )}
+
       {capture.kind === 'image' && !isEditing && (
         <ImageGallery
           actions={(image, index) => imageActions(image, index)}
@@ -744,6 +806,22 @@ export function CaptureDetailPage() {
           />
           <p className="edit-images__hint">
             The first image is the cover. Saved images stay published until Save changes succeeds.
+          </p>
+        </div>
+      )}
+
+      {isEditing && isFileCapture && (
+        <div className="edit-images">
+          <FileTray
+            disabled={isBusy}
+            files={fileDrafts.files}
+            min={1}
+            onAdd={addAttachedFiles}
+            onMove={fileDrafts.move}
+            onRemove={fileDrafts.remove}
+          />
+          <p className="edit-images__hint">
+            Saved files stay attached until Save changes succeeds.
           </p>
         </div>
       )}
@@ -829,6 +907,7 @@ export function CaptureDetailPage() {
       {isConfirmingDelete && (
         <DeleteSheet
           isDeleting={pendingAction === 'delete'}
+          isFile={isFileCapture}
           isImage={capture.kind === 'image'}
           onCancel={() => setIsConfirmingDelete(false)}
           onConfirm={() => void confirmDelete()}

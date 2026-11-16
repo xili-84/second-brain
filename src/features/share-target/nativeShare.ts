@@ -1,9 +1,13 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 
+/**
+ * One shared item waiting in Android's private cache: an image (kind "image", JPEG/PNG/WebP) or a
+ * file of any type (kind "file"). The name is kept for historical reasons.
+ */
 export type PendingSharedImage = {
-  /** Position in a multi-image share; chunks are read by index. Absent on older app builds. */
+  /** Position in a multi-item share; chunks are read by index. Absent on older app builds. */
   index?: number;
-  mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+  mimeType: string;
   name: string;
   size: number;
   uri: string;
@@ -15,9 +19,9 @@ export type PendingShare = {
   id: string;
   /** The first shared image (kept for older app builds). */
   image?: PendingSharedImage;
-  /** Every shared image, in the order the sharing app sent them. */
+  /** Every shared image or file, in the order the sharing app sent them. */
   images?: PendingSharedImage[];
-  kind: 'image' | 'text';
+  kind: 'file' | 'image' | 'text';
   receivedAt: string;
   text: string;
   title: string;

@@ -29,6 +29,16 @@ export async function deleteCapture(
   capture: DeletableCapture,
 ): Promise<DeleteCaptureResult> {
   try {
+    if (capture.kind === 'file') {
+      // Files have no guarding database function: remove every object first, then the rows. If any
+      // object cannot be removed nothing is deleted, so a file is never left without its record.
+      const paths = (capture.attachments ?? []).map((attachment) => attachment.storage_path);
+      const storageError = await removeCaptureImageObjects(client, userId, capture.id, paths);
+      if (storageError) {
+        return { ok: false, reason: 'storage' };
+      }
+    }
+
     if (capture.kind === 'image') {
       const paths = (capture.attachments ?? []).map((attachment) => attachment.storage_path);
       const storageError = await removeCaptureImageObjects(client, userId, capture.id, paths);
@@ -56,7 +66,10 @@ export async function deleteCapture(
       .single();
     return !error && data ? { ok: true } : { ok: false, reason: 'records' };
   } catch {
-    return { ok: false, reason: capture.kind === 'image' ? 'storage' : 'records' };
+    return {
+      ok: false,
+      reason: capture.kind === 'image' || capture.kind === 'file' ? 'storage' : 'records',
+    };
   }
 }
 

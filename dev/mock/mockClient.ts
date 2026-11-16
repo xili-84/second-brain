@@ -159,33 +159,72 @@ const captures: Row[] = [
       { img: 'post-1x1.jpg', size: 73550, mime: 'image/jpeg' },
     ],
   },
+  {
+    id: id(),
+    kind: 'file',
+    status: 'inbox',
+    title: 'Contract + build for Monday',
+    content: 'Send the PDF to Arben, install the APK on the Xiaomi, keep the zip as a backup.',
+    source_url: null,
+    created_at: hoursAgo(0.8),
+    files: [
+      { name: 'Contract-2026-11.pdf', size: 2516582, mime: 'application/pdf' },
+      {
+        name: 'second-brain-1.4.0-release.apk',
+        size: 8388608,
+        mime: 'application/vnd.android.package-archive',
+      },
+      { name: 'notes.txt', size: 1843, mime: 'text/plain' },
+      { name: 'okdaily-backup-2026-11-16.zip', size: 31457280, mime: 'application/zip' },
+    ],
+  },
+  {
+    id: id(),
+    kind: 'file',
+    status: 'inbox',
+    title: null,
+    content: null,
+    source_url: null,
+    created_at: hoursAgo(3),
+    files: [{ name: 'Q4-budget.xlsx', size: 184320, mime: '' }],
+  },
 ];
 for (const c of captures) {
   c.user_id = USER_ID;
   c.updated_at = c.created_at;
   c.archived_at = null;
   const images = c.images as { img: string; size: number; mime: string }[] | undefined;
-  c.attachments = images
-    ? images.map((image, index) => ({
+  const files = c.files as { name: string; size: number; mime: string }[] | undefined;
+  c.attachments = files
+    ? files.map((file, index) => ({
         id: `a-${String(c.id)}-${index}`,
-        storage_path: `${USER_ID}/${String(c.id)}/${image.img}`,
-        original_name: image.img,
-        mime_type: image.mime,
-        size_bytes: image.size,
+        storage_path: `${USER_ID}/${String(c.id)}/a-${index}.${file.name.split('.').pop()}`,
+        original_name: file.name,
+        mime_type: file.mime || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        size_bytes: file.size,
         created_at: new Date(Date.parse(String(c.created_at)) + index).toISOString(),
       }))
-    : c.img
-      ? [
-          {
-            id: `a-${String(c.id)}`,
-            storage_path: `${USER_ID}/${String(c.id)}/${String(c.img)}`,
-            original_name:
-              c.img === 'screenshot.png' ? 'Screenshot_20261026_083012.png' : String(c.img),
-            mime_type: c.mime,
-            size_bytes: c.size,
-          },
-        ]
-      : [];
+    : images
+      ? images.map((image, index) => ({
+          id: `a-${String(c.id)}-${index}`,
+          storage_path: `${USER_ID}/${String(c.id)}/${image.img}`,
+          original_name: image.img,
+          mime_type: image.mime,
+          size_bytes: image.size,
+          created_at: new Date(Date.parse(String(c.created_at)) + index).toISOString(),
+        }))
+      : c.img
+        ? [
+            {
+              id: `a-${String(c.id)}`,
+              storage_path: `${USER_ID}/${String(c.id)}/${String(c.img)}`,
+              original_name:
+                c.img === 'screenshot.png' ? 'Screenshot_20261026_083012.png' : String(c.img),
+              mime_type: c.mime,
+              size_bytes: c.size,
+            },
+          ]
+        : [];
 }
 
 // Link previews, as the link-preview Edge Function would store them.

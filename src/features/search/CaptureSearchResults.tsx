@@ -13,7 +13,9 @@ function hasMatch(text: string | null, terms: string[]) {
 }
 
 function SearchResultRow({ result, terms }: { result: CaptureSearchResult; terms: string[] }) {
-  const title = captureTitle(result);
+  // An untitled file capture is named by the file that matched.
+  const fileTitle = result.kind === 'file' && !result.title?.trim() ? result.file_name : null;
+  const title = fileTitle ?? captureTitle(result);
   const untitledLink = isUntitledLink(result);
   const details = captureStatusDetails[result.status];
   const statusLabel = details?.label ?? result.status;
@@ -31,7 +33,11 @@ function SearchResultRow({ result, terms }: { result: CaptureSearchResult; terms
 
   // Show whichever text explains the match: the note, the page description, then the URL.
   const excerpt =
-    contentSnippet && hasMatch(result.content, terms) ? (
+    result.file_name && !fileTitle ? (
+      <>
+        File: <HighlightedText terms={terms} text={result.file_name} />
+      </>
+    ) : contentSnippet && hasMatch(result.content, terms) ? (
       <HighlightedText terms={terms} text={contentSnippet} />
     ) : descriptionSnippet && hasMatch(result.link_description, terms) ? (
       <HighlightedText terms={terms} text={descriptionSnippet} />

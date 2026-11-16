@@ -1,4 +1,4 @@
-export type CaptureKind = 'image' | 'link' | 'note';
+export type CaptureKind = 'file' | 'image' | 'link' | 'note';
 
 export type CaptureDraft = {
   content: string;
@@ -66,7 +66,7 @@ export function validateCaptureDraft(draft: CaptureDraft) {
       : 'Enter a title or some note text before saving.';
   }
 
-  if (draft.kind === 'image') {
+  if (draft.kind === 'image' || draft.kind === 'file') {
     return null;
   }
 

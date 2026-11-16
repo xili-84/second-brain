@@ -11,6 +11,7 @@ import {
   uploadImages,
   type UploadState,
 } from './imageCapture';
+import { MAX_FILES_PER_CAPTURE } from '../files/fileInfo';
 import { ATTACHMENT_COLUMNS, sortAttachments, type StoredImageAttachment } from './imageStorage';
 
 /** One image in an edited capture, in the order the user wants: already stored, or newly added. */
@@ -62,15 +63,25 @@ export async function applyImageEdits(
   next: EditedImage[],
   {
     concurrency,
+    mode = 'image',
     onItem,
-  }: { concurrency?: number; onItem?: (key: string, state: UploadState) => void } = {},
+  }: {
+    concurrency?: number;
+    /** `file` edits a file capture: any file type, its own cap and wording. */
+    mode?: 'file' | 'image';
+    onItem?: (key: string, state: UploadState) => void;
+  } = {},
 ): Promise<ImageEditResult> {
+  const noun = mode === 'file' ? 'file' : 'image';
+  const nouns = `${noun}s`;
+  const max = mode === 'file' ? MAX_FILES_PER_CAPTURE : MAX_IMAGES_PER_CAPTURE;
+
   if (next.length === 0) {
-    return failed('Keep at least one image, or delete the capture instead.');
+    return failed(`Keep at least one ${noun}, or delete the capture instead.`);
   }
 
-  if (next.length > MAX_IMAGES_PER_CAPTURE) {
-    return failed(`A capture can hold up to ${MAX_IMAGES_PER_CAPTURE} images.`);
+  if (next.length > max) {
+    return failed(`A capture can hold up to ${max} ${nouns}.`);
   }
 
   const ordered = sortAttachments(current);
@@ -79,12 +90,14 @@ export async function applyImageEdits(
     next.flatMap((image) => (image.kind === 'stored' ? [image.attachment.id] : [])),
   );
   const removed = ordered.filter((attachment) => !keptIds.has(attachment.id));
-  const uploads = createUploadItems(userId, captureId, added);
+  const uploads = createUploadItems(userId, captureId, added, mode);
   const marker = markerFor(userId, captureId, uploads);
   const bucket = client.storage.from(IMAGE_BUCKET);
 
   if (marker && !rememberPendingImageOperation(marker)) {
-    return failed('Image saving could not start because cleanup state is unavailable.');
+    return failed(
+      `${mode === 'file' ? 'File' : 'Image'} saving could not start because cleanup state is unavailable.`,
+    );
   }
 
   if (uploads.length > 0) {
@@ -102,7 +115,7 @@ export async function applyImageEdits(
         clearPendingImageOperation(marker);
       }
       return failed(
-        `${result.failed.length} of ${uploads.length} new ${uploads.length === 1 ? 'image' : 'images'} did not upload. Nothing was changed; retry or remove ${result.failed.length === 1 ? 'it' : 'them'}.`,
+        `${result.failed.length} of ${uploads.length} new ${uploads.length === 1 ? noun : nouns} did not upload. Nothing was changed; retry or remove ${result.failed.length === 1 ? 'it' : 'them'}.`,
         result.failed,
       );
     }
@@ -137,7 +150,7 @@ export async function applyImageEdits(
         if (marker) {
           clearPendingImageOperation(marker);
         }
-        return failed('The new images could not be attached. Nothing was changed; please retry.');
+        return failed(`The new ${nouns} could not be attached. Nothing was changed; please retry.`);
       }
     }
   }
@@ -166,7 +179,7 @@ export async function applyImageEdits(
     ),
   );
   if (reorderResults.some((result) => result.error)) {
-    warnings.push('The new image order could not be fully saved.');
+    warnings.push(`The new ${noun} order could not be fully saved.`);
   }
 
   if (removed.length > 0) {
@@ -181,13 +194,13 @@ export async function applyImageEdits(
       );
 
     if (deleteError) {
-      warnings.push('Some removed images are still attached. Try removing them again.');
+      warnings.push(`Some removed ${nouns} are still attached. Try removing them again.`);
     } else {
       const { error: cleanupError } = await bucket.remove(
         removed.map((attachment) => attachment.storage_path),
       );
       if (cleanupError) {
-        warnings.push('Cleanup of removed private images will be retried later.');
+        warnings.push(`Cleanup of removed private ${nouns} will be retried later.`);
       }
     }
   }
@@ -228,7 +241,7 @@ export async function applyImageEdits(
   if (uploads.length > 0) {
     const storedIds = new Set(attachments.map((attachment) => attachment.id));
     if (uploads.some((item) => !storedIds.has(item.attachmentId))) {
-      warnings.push('Some new images could not be attached. Add them again from Edit.');
+      warnings.push(`Some new ${nouns} could not be attached. Add them again from Edit.`);
     }
   }
 

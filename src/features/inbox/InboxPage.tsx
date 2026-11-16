@@ -437,6 +437,7 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
           {isSelecting && selection.isConfirming && (
             <BulkDeleteSheet
               count={selection.selected.length}
+              fileCount={selection.selected.filter((capture) => capture.kind === 'file').length}
               imageCount={selection.selected.filter((capture) => capture.kind === 'image').length}
               onCancel={selection.cancelDelete}
               onConfirm={() => void selection.confirmDelete()}

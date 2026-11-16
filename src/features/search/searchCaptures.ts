@@ -13,6 +13,8 @@ export type CaptureSearchResult = {
   id: string;
   is_favorite: boolean;
   kind: string;
+  /** The name of a file that matched the search (file captures only; null otherwise). */
+  file_name?: string | null;
   /** A link's page description from its preview (null when none, or not returned yet). */
   link_description: string | null;
   /** A link's page title from its preview. */
@@ -122,8 +124,86 @@ export class CaptureSearchError extends Error {
   }
 }
 
+/**
+ * File captures whose attachment file names contain every term. This runs next to the text
+ * search (the database function only knows titles, notes, links and tags), needs no SQL, and
+ * never fails the search: if it cannot run, the text results stand on their own.
+ */
+async function searchFileNames(client: SecondBrainClient, terms: string[]) {
+  try {
+    let request = client
+      .from('attachments')
+      .select('capture_id, original_name')
+      .order('created_at', { ascending: false })
+      .limit(SEARCH_RESULT_LIMIT);
+    for (const term of terms) {
+      request = request.ilike('original_name', `%${term.replace(/[\\%_]/gu, (c) => `\\${c}`)}%`);
+    }
+    const { data: named, error } = await request;
+    if (error || !named?.length) {
+      return [];
+    }
+
+    const nameByCapture = new Map<string, string>();
+    for (const row of named) {
+      if (!nameByCapture.has(row.capture_id)) {
+        nameByCapture.set(row.capture_id, row.original_name);
+      }
+    }
+
+    const { data: captures, error: captureError } = await client
+      .from('captures')
+      .select(
+        'id, kind, status, title, content, source_url, created_at, is_favorite, capture_tags(tags(id, name))',
+      )
+      .eq('kind', 'file')
+      .in('id', [...nameByCapture.keys()])
+      .order('created_at', { ascending: false });
+    if (captureError || !captures) {
+      return [];
+    }
+
+    return (captures as unknown as CaptureSearchRow[]).map((row) => ({
+      ...toSearchResult(row),
+      file_name: nameByCapture.get(row.id) ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Adds file-name matches after the text matches, without repeating a capture. */
+function withFileMatches(results: CaptureSearchResult[], files: CaptureSearchResult[]) {
+  const byId = new Map(results.map((result) => [result.id, result]));
+  const merged = results.map((result) => {
+    const fileName = files.find((file) => file.id === result.id)?.file_name;
+    return fileName ? { ...result, file_name: fileName } : result;
+  });
+  for (const file of files) {
+    if (!byId.has(file.id)) {
+      merged.push(file);
+    }
+  }
+  return merged.slice(0, SEARCH_RESULT_LIMIT);
+}
+
 /** Searches every capture the signed-in user owns, whatever its status. */
 export async function searchCaptures(
+  client: SecondBrainClient,
+  query: string,
+): Promise<CaptureSearchResponse> {
+  const response = await searchText(client, query);
+  const terms = parseSearchTerms(query);
+  if (terms.length === 0) {
+    return response;
+  }
+  return {
+    ...response,
+    results: withFileMatches(response.results, await searchFileNames(client, terms)),
+  };
+}
+
+async function searchText(
   client: SecondBrainClient,
   query: string,
 ): Promise<CaptureSearchResponse> {

@@ -104,7 +104,7 @@ describe('inbox list', () => {
       '/captures/link-id',
     );
     expect(select).toHaveBeenCalledWith(
-      'id, kind, title, content, source_url, created_at, is_favorite, attachments(storage_path, created_at), capture_tags(tags(id, name)), link_title, link_description, link_site_name, link_image_path, link_favicon, link_preview_status',
+      'id, kind, title, content, source_url, created_at, is_favorite, attachments(storage_path, created_at, original_name, mime_type, size_bytes), capture_tags(tags(id, name)), link_title, link_description, link_site_name, link_image_path, link_favicon, link_preview_status',
     );
     expect(eq).toHaveBeenCalledWith('status', 'inbox');
     expect(order).toHaveBeenCalledWith('created_at', { ascending: false });

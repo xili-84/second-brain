@@ -4,13 +4,20 @@ import { Sheet } from '../../../components/Sheet';
 
 type DeleteSheetProps = {
   isDeleting: boolean;
+  isFile?: boolean;
   isImage: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 };
 
 /** Confirmation before a permanent delete. Cancel has initial focus, so Enter is safe. */
-export function DeleteSheet({ isDeleting, isImage, onCancel, onConfirm }: DeleteSheetProps) {
+export function DeleteSheet({
+  isDeleting,
+  isFile = false,
+  isImage,
+  onCancel,
+  onConfirm,
+}: DeleteSheetProps) {
   const cancelButton = useRef<HTMLButtonElement>(null);
 
   return (
@@ -30,9 +37,11 @@ export function DeleteSheet({ isDeleting, isImage, onCancel, onConfirm }: Delete
         Delete this capture?
       </h2>
       <p className="sheet__text" id="delete-sheet-text">
-        {isImage
-          ? 'The capture and its private image are removed permanently. This can’t be undone.'
-          : 'The capture is removed permanently. This can’t be undone.'}
+        {isFile
+          ? 'The capture and its private files are removed permanently. This can’t be undone.'
+          : isImage
+            ? 'The capture and its private image are removed permanently. This can’t be undone.'
+            : 'The capture is removed permanently. This can’t be undone.'}
       </p>
       <button
         className="btn btn--danger btn--lg btn--block"

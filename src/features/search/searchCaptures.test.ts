@@ -99,7 +99,8 @@ describe('searchCaptures', () => {
       p_limit: 50,
       p_query: 'invoice paid',
     });
-    expect(client.from).not.toHaveBeenCalled();
+    // Only the file-name lookup may touch a table; the text search itself ran in the function.
+    expect(client.from).not.toHaveBeenCalledWith('captures');
   });
 
   it('passes through tags and the favorite flag from the database function', async () => {
@@ -224,7 +225,8 @@ describe('searchCaptures', () => {
     });
     expect(builder.or).toHaveBeenNthCalledWith(1, buildSubstringFilter('invoice', ALL_COLUMNS));
     expect(builder.or).toHaveBeenNthCalledWith(2, buildSubstringFilter('invoice'));
-    expect(builder.select).toHaveBeenLastCalledWith(
+    expect(builder.select).toHaveBeenNthCalledWith(
+      2,
       'id, kind, status, title, content, source_url, created_at, is_favorite, capture_tags(tags(id, name))',
     );
   });
@@ -245,5 +247,112 @@ describe('searchCaptures', () => {
     });
 
     await expect(searchCaptures(typed, 'invoice')).rejects.toBeInstanceOf(CaptureSearchError);
+  });
+
+  describe('file names', () => {
+    function fileClient({
+      attachments = [{ capture_id: 'file-1', original_name: 'Quarterly-report.PDF' }],
+      captures = [
+        {
+          content: null,
+          created_at: '2026-10-27T10:00:00.000Z',
+          id: 'file-1',
+          is_favorite: false,
+          kind: 'file',
+          source_url: null,
+          status: 'inbox',
+          title: null,
+        },
+      ],
+      rpcRows = [] as unknown[],
+    } = {}) {
+      const ilike = vi.fn();
+      const attachmentsBuilder = {
+        ilike,
+        limit: vi.fn(),
+        order: vi.fn(),
+        select: vi.fn(),
+      };
+      attachmentsBuilder.select.mockReturnValue(attachmentsBuilder);
+      attachmentsBuilder.order.mockReturnValue(attachmentsBuilder);
+      attachmentsBuilder.limit.mockReturnValue(attachmentsBuilder);
+      ilike.mockReturnValue(attachmentsBuilder);
+      // The builder is awaited, so it needs a then().
+      Object.assign(attachmentsBuilder, {
+        then: (resolve: (value: unknown) => void) => resolve({ data: attachments, error: null }),
+      });
+      const capturesBuilder = {
+        eq: vi.fn(),
+        in: vi.fn(),
+        order: vi.fn(),
+        select: vi.fn(),
+      };
+      capturesBuilder.select.mockReturnValue(capturesBuilder);
+      capturesBuilder.eq.mockReturnValue(capturesBuilder);
+      capturesBuilder.in.mockReturnValue(capturesBuilder);
+      capturesBuilder.order.mockResolvedValue({ data: captures, error: null });
+      const client = {
+        from: vi.fn((table: string) =>
+          table === 'attachments' ? attachmentsBuilder : capturesBuilder,
+        ),
+        rpc: vi.fn().mockResolvedValue({ data: rpcRows, error: null }),
+      };
+      return { attachmentsBuilder, capturesBuilder, typed: client as unknown as SecondBrainClient };
+    }
+
+    it('adds file captures whose file name contains every term', async () => {
+      const { attachmentsBuilder, capturesBuilder, typed } = fileClient();
+
+      const { results } = await searchCaptures(typed, 'quarterly report');
+
+      expect(attachmentsBuilder.ilike).toHaveBeenNthCalledWith(1, 'original_name', '%quarterly%');
+      expect(attachmentsBuilder.ilike).toHaveBeenNthCalledWith(2, 'original_name', '%report%');
+      expect(capturesBuilder.eq).toHaveBeenCalledWith('kind', 'file');
+      expect(capturesBuilder.in).toHaveBeenCalledWith('id', ['file-1']);
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({
+        file_name: 'Quarterly-report.PDF',
+        id: 'file-1',
+        kind: 'file',
+      });
+    });
+
+    it('does not repeat a capture the text search already found', async () => {
+      const { typed } = fileClient({
+        rpcRows: [
+          {
+            ...row,
+            id: 'file-1',
+            is_favorite: false,
+            kind: 'file',
+            rank: 0.2,
+            tags: [],
+          },
+        ],
+      });
+
+      const { results } = await searchCaptures(typed, 'report');
+
+      expect(results.map((item) => item.id)).toEqual(['file-1']);
+      expect(results[0]?.file_name).toBe('Quarterly-report.PDF');
+    });
+
+    it('escapes LIKE wildcards typed by the user', async () => {
+      const { attachmentsBuilder, typed } = fileClient({ attachments: [] });
+
+      await searchCaptures(typed, '100%_done');
+
+      expect(attachmentsBuilder.ilike).toHaveBeenCalledWith('original_name', '%100\\%\\_done%');
+    });
+
+    it('keeps the text results when the file-name lookup fails', async () => {
+      const { typed } = createClient({
+        rpcResult: { data: [{ ...row, is_favorite: false, rank: 1, tags: [] }], error: null },
+      });
+
+      const { results } = await searchCaptures(typed, 'invoice');
+
+      expect(results).toHaveLength(1);
+    });
   });
 });

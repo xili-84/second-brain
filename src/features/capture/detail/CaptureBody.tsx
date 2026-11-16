@@ -31,6 +31,11 @@ export function CaptureBody({ content, kind, linkPreview, sourceUrl }: CaptureBo
     );
   }
 
+  // A file capture is its files; an empty note line under them would only say "nothing here".
+  if (kind === 'file' && !content) {
+    return null;
+  }
+
   return (
     <article aria-label={`${kind} content`} className="article-body">
       {content ? (

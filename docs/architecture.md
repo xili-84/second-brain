@@ -42,7 +42,7 @@ Windows and once in the Android app even though both sessions access the same da
 
 ## Capture model
 
-`captures` is the central record. Its kind is `note`, `link`, or `image`, and its lifecycle status is
+`captures` is the central record. Its kind is `note`, `link`, `image`, or `file`, and its lifecycle status is
 `inbox`, `reviewed`, or `archived`. Tags use a normalized many-to-many relationship. Image bytes
 live in a private Supabase Storage bucket, while attachment metadata lives in PostgreSQL.
 
@@ -114,6 +114,41 @@ attachment and Storage policies cover the extra rows and objects.
   reconciliation.
 - **Cleanup marker.** The local pending marker lists every path of an attempt
   (`additionalPaths`); reconciliation removes only the paths that no attachment references.
+
+### File attachments
+
+A `file` capture holds 1 to 10 files of any type, up to 50 MB each (the Supabase free-plan object
+cap, checked in the app first so the message is friendly). It reuses the same `attachments` table,
+the same private `capture-images` bucket and the same owner-folder policies as images; only the
+limits change (`202611160001_file_attachments.sql`: bucket 50 MiB with no MIME allow-list,
+attachments accept any MIME type up to 50 MiB, captures may be of kind `file`). Images keep their
+10 MiB / JPEG-PNG-WebP rules, checked by the app and by `finalize_image_capture`.
+
+- **Creating** (`fileCapture.ts`). Files upload three at a time to
+  `{user_id}/{capture_id}/{attachment_id}.{ext}` (original extension if it is plain ASCII; the real
+  name lives in `attachments.original_name`). Any failed upload creates nothing; a retry uploads
+  only the failures. Then the capture row and the attachment rows are inserted with the user's own
+  RLS rights (no RPC). If no row can be attached the capture is removed again; if only some are,
+  the capture keeps those and the other objects are removed. The same pending-cleanup marker and
+  reconciliation as images apply.
+- **Editing.** The shared `applyImageEdits` runs in `file` mode (add, remove, reorder; at least one
+  file stays).
+- **Download and open.** Nothing is signed until the user taps. In a browser a 5-minute signed URL
+  with `download=<name>` is followed. In the Android app `FileSaverPlugin` downloads that URL
+  (HTTPS, `*.supabase.co` only) into the cache, checks the size, and publishes it to
+  `Downloads/Second Brain` (MediaStore on Android 10+, a plain file with a one-time permission
+  request on 9 and older). The saved copy can then be opened through an `ACTION_VIEW` intent with a
+  read grant. APKs are left to the Files app so the app needs no install permission.
+- **Deleting.** `deleteCapture` removes every object of the capture's folder first and only then the
+  row (attachments cascade), so a file is never left without its record.
+- **Search.** The database function is unchanged. The client also looks for the typed words in
+  `attachments.original_name` (every word, case-insensitive) and adds those file captures after the
+  text matches; if that lookup fails the text results are shown alone.
+- **Android share.** `SEND` and `SEND_MULTIPLE` accept any MIME type. Items are copied to private
+  storage (up to 10, 50 MiB each, content:// from other apps only) and handed to React in chunks.
+  If every item is a JPEG/PNG/WebP the share is an image draft exactly as before; anything else
+  (including GIF or HEIC) makes a file draft. A `.txt` shared from a file manager (a stream and no
+  text) is a file; shared text and links stay notes and links.
 
 ### Deleting an image capture
 

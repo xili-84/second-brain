@@ -20,6 +20,8 @@ type CaptureRowProps = {
   /** Images in an image capture; more than one adds a "+N" badge to the thumbnail. */
   imageCount?: number;
   kind: string;
+  /** A file-type glyph shown in the thumbnail slot instead of a picture (file captures). */
+  fileIcon?: ReactNode;
   /** Shows an image slot; `thumbnailUrl` fills it once a signed URL exists. */
   showThumbnail?: boolean;
   /** The section to keep highlighted when the capture opens. */
@@ -41,6 +43,7 @@ export function CaptureRow({
   excerpt,
   favicon,
   favorite,
+  fileIcon,
   href,
   imageCount = 0,
   kind,
@@ -83,6 +86,11 @@ export function CaptureRow({
         </p>
         {tags}
       </div>
+      {fileIcon && (
+        <span aria-hidden="true" className="row__thumb row__thumb--file">
+          {fileIcon}
+        </span>
+      )}
       {showThumbnail && (
         <span className="row__thumb">
           {thumbnailUrl && <img alt="" decoding="async" loading="lazy" src={thumbnailUrl} />}
