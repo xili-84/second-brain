@@ -4,12 +4,15 @@ import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
 import { initializePwaUpdates } from './app/pwaUpdate';
 import { applyTheme, readThemePreference } from './app/theme';
+import { initializeAppUpdates } from './app/update/appUpdate';
 import { createSecondBrainClientFromBrowserEnvironment } from './lib/supabase/client';
 import './styles/index.css';
 
 // theme-init.js already set the colours before paint; this also styles the Android system bars.
 applyTheme(readThemePreference());
 initializePwaUpdates();
+// Android app only: a quiet check of GitHub Releases, at most every few hours.
+void initializeAppUpdates();
 
 const root = document.getElementById('root');
 

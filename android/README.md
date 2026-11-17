@@ -111,3 +111,27 @@ release install.
 Text sharing, image sharing from Gallery and Files, private image capture and **Save to phone**
 have passed physical tests (release 1.1.1). The earlier diagnostic app and the browser `/share`
 route are retired.
+
+## Publishing a release and in-app updates
+
+Releases are built by `.github/workflows/release.yml` when a `v*` tag is pushed:
+
+```bash
+# after bumping package.json version, versionName and versionCode and pushing that commit
+git tag v1.6.0 && git push origin v1.6.0
+```
+
+The workflow checks that the tag matches `package.json` and `versionName`, builds with the
+`VITE_SUPABASE_*` repository variables, signs with the keystore from repository secrets
+(`SECOND_BRAIN_KEYSTORE_BASE64`, `SECOND_BRAIN_KEYSTORE_PASSWORD`, `SECOND_BRAIN_KEY_ALIAS`,
+`SECOND_BRAIN_KEY_PASSWORD`), refuses an APK whose signer is not the fingerprint above, and
+publishes `second-brain-X.Y.Z-release.apk`, `brain-dist-vX.Y.Z.zip` (extract into the web root) and
+`SHA256SUMS.txt` as a GitHub Release.
+
+The app (`AppUpdaterPlugin`) reads `releases/latest` of this public repository without a token on
+launch, at most every six hours, and from **Account → Check for updates**. A newer `vX.Y.Z` tag
+shows "Update available"; Update downloads the release's APK into the app cache and opens the
+system installer. Before that it confirms the file is `net.okdaily.brain`, has a higher
+`versionCode` and is signed with the same key as the installed app. The first time, Android asks to
+allow "Install unknown apps" for Second Brain; the install continues when you come back. Offline or
+rate-limited checks fail silently.

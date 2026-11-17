@@ -358,6 +358,32 @@ body.has-sheet {
   border-bottom: var(--rule-hair) solid var(--rule);
 }
 
+.sheet__section + .sheet__section {
+  margin-top: calc(-1 * var(--space-3));
+  border-top: 0;
+}
+
+.sheet__version {
+  margin: 0;
+  font: var(--text-label);
+}
+
+.sheet__hint {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-2);
+  font: var(--text-meta);
+}
+
+.sheet__section--app .sheet__item {
+  margin: var(--space-2) 0 0 calc(-1 * var(--space-2));
+  width: calc(100% + 2 * var(--space-2));
+}
+
+.sheet__item:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .sheet__section .segmented {
   margin: 0;
 }

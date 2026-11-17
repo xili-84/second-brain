@@ -1,0 +1,108 @@
+name: Release
+
+# Push a tag like v1.6.0 to build the signed Android APK and the web dist zip and publish them as a
+# GitHub Release. The Android app's updater reads the latest release from the public API.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    env:
+      # Real browser-safe values only (repository variables); a release never ships placeholders.
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      # Public fingerprint of the release signing certificate (see android/README.md).
+      EXPECTED_CERT_SHA256: e9e4418ce61d3743127e9135ef70ec4ba47a712e8b5f4135861f2b218ee20c2a
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check tag, versions and configuration
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="$(node -p "require('./package.json').version")"
+          GRADLE_VERSION="$(sed -n 's/^ *versionName "\(.*\)"/\1/p' android/app/build.gradle)"
+          if [ "$TAG" != "v$VERSION" ] || [ "$TAG" != "v$GRADLE_VERSION" ]; then
+            echo "::error::Tag $TAG does not match package.json ($VERSION) and versionName ($GRADLE_VERSION)."
+            exit 1
+          fi
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "::error::Set the VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY repository variables."
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - run: npm ci
+      - run: npm run check
+
+      - name: Decode the signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SECOND_BRAIN_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::The SECOND_BRAIN_KEYSTORE_BASE64 secret is missing."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/brain-release.jks"
+          echo "SECOND_BRAIN_KEYSTORE_FILE=$RUNNER_TEMP/brain-release.jks" >> "$GITHUB_ENV"
+
+      - name: Build the signed APK
+        env:
+          SECOND_BRAIN_KEYSTORE_PASSWORD: ${{ secrets.SECOND_BRAIN_KEYSTORE_PASSWORD }}
+          SECOND_BRAIN_KEY_ALIAS: ${{ secrets.SECOND_BRAIN_KEY_ALIAS }}
+          SECOND_BRAIN_KEY_PASSWORD: ${{ secrets.SECOND_BRAIN_KEY_PASSWORD }}
+        run: npx cap sync android && node scripts/gradlew.mjs assembleRelease
+
+      - name: Verify the signature and package the files
+        run: |
+          set -euo pipefail
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          DIGEST="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          if [ "$DIGEST" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::Release APK is not signed with the Second Brain release key."
+            exit 1
+          fi
+          mkdir -p release
+          cp "$APK" "release/second-brain-$VERSION-release.apk"
+          (cd dist && zip -qr "../release/brain-dist-v$VERSION.zip" .)
+          (cd release && sha256sum * > SHA256SUMS.txt)
+          ls -l release
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/brain-release.jks"

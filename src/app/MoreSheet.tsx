@@ -2,6 +2,7 @@ import { LogOut, X } from 'lucide-react';
 
 import { Sheet } from '../components/Sheet';
 import { ThemeSwitch } from './ThemeSwitch';
+import { AppVersionSection } from './update/AppVersionSection';
 
 type MoreSheetProps = {
   email: string | undefined;
@@ -9,7 +10,7 @@ type MoreSheetProps = {
   onSignOut: () => void;
 };
 
-/** Account and settings: appearance, who is signed in, sign out. Phones and desktop share it. */
+/** Account and settings: appearance, app version and updates (Android), sign out. Phones and desktop share it. */
 export function MoreSheet({ email, onClose, onSignOut }: MoreSheetProps) {
   return (
     <Sheet labelledBy="more-sheet-title" onClose={onClose}>
@@ -20,6 +21,7 @@ export function MoreSheet({ email, onClose, onSignOut }: MoreSheetProps) {
       <div className="sheet__section">
         <ThemeSwitch />
       </div>
+      <AppVersionSection />
       <button className="sheet__item sheet__item--danger" onClick={onSignOut} type="button">
         <LogOut aria-hidden="true" className="icon" />
         Sign out

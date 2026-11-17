@@ -19,6 +19,7 @@ import { MoreSheet } from './MoreSheet';
 import { isFocusedScreen } from './navigation';
 import { applyPwaUpdate, subscribeToPwaUpdates } from './pwaUpdate';
 import { TabBar } from './TabBar';
+import { AppUpdateBanner } from './update/AppUpdateBanner';
 
 function useOnlineStatus() {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
@@ -145,6 +146,8 @@ function Shell() {
           </span>
         </div>
       )}
+
+      <AppUpdateBanner />
 
       {showChrome && <Masthead onAccount={() => setIsMoreOpen(true)} />}
 
