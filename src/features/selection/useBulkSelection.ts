@@ -60,6 +60,13 @@ export function useBulkSelection<T extends DeletableCapture>({
     setIsSelecting(true);
   }, []);
 
+  /** Long-press on a row: select mode with that row already ticked. */
+  const startWith = useCallback((id: string) => {
+    setNotice(null);
+    setSelectedIds(new Set([id]));
+    setIsSelecting(true);
+  }, []);
+
   const stop = useCallback(() => {
     setIsSelecting(false);
     setIsConfirming(false);
@@ -151,6 +158,7 @@ export function useBulkSelection<T extends DeletableCapture>({
     selected,
     selectedIds: effectiveIds,
     start,
+    startWith,
     stop,
     toggle,
     toggleAll,

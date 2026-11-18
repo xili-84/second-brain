@@ -8,6 +8,7 @@ import { Notice } from '../../components/Notice';
 import { PageHeader } from '../../components/PageHeader';
 import { SkeletonRows } from '../../components/Skeleton';
 import { useAuth } from '../auth/authContext';
+import { usePendingDelete } from '../delete/pendingDeleteContext';
 import { captureStatusDetails, type CaptureStatus } from '../capture/captureLifecycle';
 import { CaptureSearchResults } from '../search/CaptureSearchResults';
 import { parseSearchTerms, SEARCH_RESULT_LIMIT } from '../search/searchCaptures';
@@ -146,6 +147,12 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
   const userId = session?.user.id;
   const details = captureStatusDetails[status];
   const list = useCaptureList(client, status, userId);
+  // Rows waiting for Undo (or deleted this session) are hidden everywhere.
+  const { hiddenIds, scheduleDelete } = usePendingDelete();
+  const liveCaptures = useMemo(
+    () => list.captures.filter((capture) => !hiddenIds.has(capture.id)),
+    [hiddenIds, list.captures],
+  );
 
   const { clear, commit, draft, setDraft, urlQuery } = useSearchQuery();
   const searchInput = useRef<HTMLInputElement>(null);
@@ -155,10 +162,10 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
   const terms = parseSearchTerms(urlQuery);
   const { filter, setFilter } = useListFilter();
   const isFiltered = filter.favorites || filter.tag !== null;
-  const tagCounts = useMemo(() => tagCountsOf(list.captures), [list.captures]);
+  const tagCounts = useMemo(() => tagCountsOf(liveCaptures), [liveCaptures]);
   const visibleCaptures = useMemo(
     () =>
-      list.captures.filter(
+      liveCaptures.filter(
         (capture) =>
           (!filter.favorites || capture.is_favorite) &&
           (!filter.tag ||
@@ -166,7 +173,7 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
               (tag) => tagKey(tag.name) === tagKey(filter.tag ?? ''),
             )),
       ),
-    [filter.favorites, filter.tag, list.captures],
+    [filter.favorites, filter.tag, liveCaptures],
   );
   // Only the rows on screen get thumbnails, in one batched request.
   const thumbnails = useThumbnails(client, visibleCaptures, !isSearching);
@@ -182,10 +189,10 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
 
   // Searching (or emptying the list) leaves select mode.
   useEffect(() => {
-    if (selection.isSelecting && (isSearching || (!list.isLoading && list.captures.length === 0))) {
+    if (selection.isSelecting && (isSearching || (!list.isLoading && liveCaptures.length === 0))) {
       stopSelecting();
     }
-  }, [isSearching, list.captures.length, list.isLoading, selection.isSelecting, stopSelecting]);
+  }, [isSearching, liveCaptures.length, list.isLoading, selection.isSelecting, stopSelecting]);
 
   async function toggleFavorite(capture: CaptureSummary) {
     const next = !capture.is_favorite;
@@ -248,8 +255,8 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
     : list.isLoading
       ? 'Loading…'
       : isFiltered
-        ? `${visibleCaptures.length} of ${plural(list.captures.length, 'item')}`
-        : plural(list.captures.length, 'item');
+        ? `${visibleCaptures.length} of ${plural(liveCaptures.length, 'item')}`
+        : plural(liveCaptures.length, 'item');
 
   return (
     <section
@@ -273,7 +280,7 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
             </button>
           ) : (
             <div className="page-header__actions">
-              {list.captures.length > 0 && (
+              {liveCaptures.length > 0 && (
                 <button
                   className="btn btn--ghost page-header__select"
                   disabled={list.isLoading}
@@ -333,7 +340,14 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
             isBusy={search.status === 'loading'}
             onExitToInput={() => searchInput.current?.focus()}
             ref={resultsList}
-            results={search.status === 'ready' ? search.results : []}
+            onDelete={(result, label) =>
+              scheduleDelete({ id: result.id, kind: result.kind, label })
+            }
+            results={
+              search.status === 'ready'
+                ? search.results.filter((result) => !hiddenIds.has(result.id))
+                : []
+            }
             terms={terms}
           />
           {search.status === 'loading' && <SkeletonRows count={3} />}
@@ -352,7 +366,7 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
             </Notice>
           )}
 
-          {(list.captures.length > 0 || isFiltered) && (
+          {(liveCaptures.length > 0 || isFiltered) && (
             <FilterBar filter={filter} onChange={setFilter} tagCounts={tagCounts} />
           )}
 
@@ -367,9 +381,9 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
             </Notice>
           )}
 
-          {list.isLoading && list.captures.length === 0 && <SkeletonRows />}
+          {list.isLoading && liveCaptures.length === 0 && <SkeletonRows />}
 
-          {!list.isLoading && list.captures.length > 0 && visibleCaptures.length === 0 && (
+          {!list.isLoading && liveCaptures.length > 0 && visibleCaptures.length === 0 && (
             <EmptyState
               action={
                 <button
@@ -389,7 +403,7 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
             </EmptyState>
           )}
 
-          {!list.isLoading && list.captures.length === 0 && !list.error && (
+          {!list.isLoading && liveCaptures.length === 0 && !list.error && (
             <EmptyState
               action={
                 status === 'inbox' ? (
@@ -411,6 +425,8 @@ export function CaptureListPage({ status }: { status: CaptureStatus }) {
           <CaptureRiver
             captures={visibleCaptures}
             isBusy={list.isLoading}
+            onDelete={(capture, label) => scheduleDelete({ ...capture, label })}
+            onLongPress={(capture) => selection.startWith(capture.id)}
             onToggleFavorite={(capture) => void toggleFavorite(capture)}
             selection={
               isSelecting

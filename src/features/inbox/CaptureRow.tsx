@@ -1,9 +1,10 @@
-import { Check, Star } from 'lucide-react';
+import { Check, Star, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { SectionState } from '../../app/navigation';
 import { FavoriteButton } from '../tags/FavoriteButton';
+import { useRowGestures } from './useRowGestures';
 import { relativeTime } from './listFormat';
 
 type CaptureRowProps = {
@@ -20,6 +21,13 @@ type CaptureRowProps = {
   /** Images in an image capture; more than one adds a "+N" badge to the thumbnail. */
   imageCount?: number;
   kind: string;
+  /**
+   * Undoable delete without opening the capture: swipe left on touch, a hover trash button with a
+   * mouse, and a screen-reader-reachable button everywhere.
+   */
+  onDelete?: (() => void) | undefined;
+  /** Long-press starts select mode with this row ticked. */
+  onLongPress?: (() => void) | undefined;
   /** A file-type glyph shown in the thumbnail slot instead of a picture (file captures). */
   fileIcon?: ReactNode;
   /** Shows an image slot; `thumbnailUrl` fills it once a signed URL exists. */
@@ -47,6 +55,8 @@ export function CaptureRow({
   href,
   imageCount = 0,
   kind,
+  onDelete,
+  onLongPress,
   section,
   selection,
   showThumbnail = false,
@@ -57,6 +67,11 @@ export function CaptureRow({
   titleIsUrl = false,
 }: CaptureRowProps) {
   const state: SectionState = { section };
+  const gestures = useRowGestures({
+    onDelete: selection ? undefined : onDelete,
+    onLongPress: selection ? undefined : onLongPress,
+  });
+  const name = accessibleName.replace(/^Open /u, '');
 
   const content = (
     <>
@@ -106,7 +121,6 @@ export function CaptureRow({
   );
 
   if (selection) {
-    const name = accessibleName.replace(/^Open /u, '');
     return (
       <li
         className={
@@ -130,19 +144,70 @@ export function CaptureRow({
     );
   }
 
+  const hasActions = Boolean(favorite?.onToggle || onDelete);
+  const isOpen = gestures.offset !== 0;
+  const swipeable = Boolean(onDelete || onLongPress);
+
   return (
-    <li className={favorite?.onToggle ? 'row row--with-action' : 'row'}>
-      <Link aria-label={accessibleName} className="row__link" state={state} to={href}>
-        {content}
-      </Link>
-      {favorite?.onToggle && (
-        <FavoriteButton
-          className="icon-btn row__fav"
-          isFavorite={favorite.isFavorite}
-          label={`Favorite: ${accessibleName.replace(/^Open /u, '')}`}
-          onToggle={favorite.onToggle}
-        />
+    <li
+      className={[
+        'row',
+        swipeable && 'row--swipeable',
+        isOpen && 'row--open',
+        gestures.removing && 'row--removing',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      data-row-open={isOpen ? 'true' : undefined}
+    >
+      {onDelete && (
+        // The red area revealed by a swipe. Screen readers use the row's own Delete button.
+        <div aria-hidden="true" className="row__swipe-action">
+          <button
+            className="row__swipe-button"
+            onClick={gestures.remove}
+            tabIndex={-1}
+            type="button"
+          >
+            <Trash2 className="icon" />
+            <span>Delete</span>
+          </button>
+        </div>
       )}
+      <div
+        className={[
+          'row__slide',
+          hasActions && 'row--with-action',
+          gestures.dragging && 'row__slide--dragging',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={isOpen ? { transform: `translate3d(${gestures.offset}px, 0, 0)` } : undefined}
+        {...(swipeable ? gestures.handlers : {})}
+      >
+        <Link aria-label={accessibleName} className="row__link" state={state} to={href}>
+          {content}
+        </Link>
+        {favorite?.onToggle && (
+          <FavoriteButton
+            className="icon-btn row__fav"
+            isFavorite={favorite.isFavorite}
+            label={`Favorite: ${name}`}
+            onToggle={favorite.onToggle}
+          />
+        )}
+        {onDelete && (
+          <button
+            aria-label={`Delete ${name}`}
+            className="icon-btn row__delete"
+            onClick={gestures.remove}
+            title="Delete"
+            type="button"
+          >
+            <Trash2 aria-hidden="true" className="icon" />
+          </button>
+        )}
+      </div>
     </li>
   );
 }

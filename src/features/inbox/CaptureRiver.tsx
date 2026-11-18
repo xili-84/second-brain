@@ -14,6 +14,10 @@ import { imageCount, thumbnailKey, thumbnailSource } from './useThumbnails';
 type CaptureRiverProps = {
   captures: CaptureSummary[];
   isBusy: boolean;
+  /** Undoable delete from the list (swipe on touch, trash button with a mouse). */
+  onDelete?: ((capture: CaptureSummary, label: string) => void) | undefined;
+  /** Long-press a row to start selecting with it. */
+  onLongPress?: ((capture: CaptureSummary) => void) | undefined;
   onToggleFavorite: (capture: CaptureSummary) => void;
   /** Present in select mode: which rows are ticked, and how to toggle one. */
   selection?:
@@ -26,6 +30,8 @@ type CaptureRiverProps = {
 export function CaptureRiver({
   captures,
   isBusy,
+  onDelete,
+  onLongPress,
   onToggleFavorite,
   selection,
   status,
@@ -101,6 +107,8 @@ export function CaptureRiver({
                   imageCount={imageCount(capture)}
                   key={capture.id}
                   kind={capture.kind}
+                  onDelete={onDelete && (() => onDelete(capture, title))}
+                  onLongPress={onLongPress && (() => onLongPress(capture))}
                   section={details.path}
                   selection={
                     selection && {

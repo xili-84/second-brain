@@ -12,6 +12,8 @@ import { CaptureDetailPage } from '../features/capture/CaptureDetailPage';
 import { reconcileImageStorage } from '../features/capture/imageReconciliation';
 import { QuickCapturePage } from '../features/capture/QuickCapturePage';
 import { CaptureListPage, InboxPage } from '../features/inbox/InboxPage';
+import { DeleteSnackbarHost } from '../features/delete/DeleteSnackbar';
+import { PendingDeleteProvider } from '../features/delete/PendingDeleteProvider';
 import { PendingShareProvider } from '../features/share-target/PendingShareProvider';
 import type { SecondBrainClient } from '../lib/supabase/client';
 import { Masthead } from './Masthead';
@@ -202,6 +204,8 @@ function Shell() {
         </Routes>
       </main>
 
+      <DeleteSnackbarHost />
+
       {showTabBar && <TabBar onMore={() => setIsMoreOpen(true)} />}
 
       {isMoreOpen && (
@@ -251,7 +255,9 @@ export function App({ client }: { client: SecondBrainClient }) {
     <BrowserRouter>
       <AuthProvider client={client}>
         <PendingShareProvider>
-          <Shell />
+          <PendingDeleteProvider>
+            <Shell />
+          </PendingDeleteProvider>
         </PendingShareProvider>
       </AuthProvider>
     </BrowserRouter>

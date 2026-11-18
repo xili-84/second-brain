@@ -91,6 +91,8 @@
   --danger: #c8102e;
   --danger-soft: #fbe9ec;
   --on-danger: #ffffff;
+  /* Red on the inverted (ink) snackbar: the other theme's accent keeps 5:1 or better. */
+  --inverse-accent: #ff5468;
   --highlight: #ffe58a; /* search matches */
   --focus: #1f5fd6;
   --scrim: rgba(0, 0, 0, 0.4);
@@ -127,6 +129,7 @@
   --danger: #ff5468;
   --danger-soft: #3a1419;
   --on-danger: #0f0f10;
+  --inverse-accent: #c8102e;
   --highlight: #5c4a00;
   --focus: #7aa7ff;
   --scrim: rgba(0, 0, 0, 0.6);
@@ -155,6 +158,7 @@
     --danger: #ff5468;
     --danger-soft: #3a1419;
     --on-danger: #0f0f10;
+    --inverse-accent: #c8102e;
     --highlight: #5c4a00;
     --focus: #7aa7ff;
     --scrim: rgba(0, 0, 0, 0.6);

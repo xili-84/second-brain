@@ -12,7 +12,15 @@ function hasMatch(text: string | null, terms: string[]) {
   return Boolean(text && splitHighlights(text, terms).some((part) => part.match));
 }
 
-function SearchResultRow({ result, terms }: { result: CaptureSearchResult; terms: string[] }) {
+function SearchResultRow({
+  onDelete,
+  result,
+  terms,
+}: {
+  onDelete?: ((result: CaptureSearchResult, label: string) => void) | undefined;
+  result: CaptureSearchResult;
+  terms: string[];
+}) {
   // An untitled file capture is named by the file that matched.
   const fileTitle = result.kind === 'file' && !result.title?.trim() ? result.file_name : null;
   const title = fileTitle ?? captureTitle(result);
@@ -58,6 +66,7 @@ function SearchResultRow({ result, terms }: { result: CaptureSearchResult; terms
       favorite={{ isFavorite: result.is_favorite }}
       href={`/captures/${result.id}`}
       kind={result.kind}
+      onDelete={onDelete && (() => onDelete(result, title))}
       section={details?.path ?? '/inbox'}
       status={statusLabel}
       tags={
@@ -74,6 +83,8 @@ function SearchResultRow({ result, terms }: { result: CaptureSearchResult; terms
 
 type CaptureSearchResultsProps = {
   isBusy: boolean;
+  /** Undoable delete of one result (swipe on touch, trash button with a mouse). */
+  onDelete?: ((result: CaptureSearchResult, label: string) => void) | undefined;
   onExitToInput: () => void;
   ref?: Ref<HTMLOListElement>;
   results: CaptureSearchResult[];
@@ -83,6 +94,7 @@ type CaptureSearchResultsProps = {
 /** Result list; ArrowUp/ArrowDown move between results, Escape goes back to the search box. */
 export function CaptureSearchResults({
   isBusy,
+  onDelete,
   onExitToInput,
   ref,
   results,
@@ -119,7 +131,7 @@ export function CaptureSearchResults({
       ref={ref}
     >
       {results.map((result) => (
-        <SearchResultRow key={result.id} result={result} terms={terms} />
+        <SearchResultRow key={result.id} onDelete={onDelete} result={result} terms={terms} />
       ))}
     </ol>
   );
