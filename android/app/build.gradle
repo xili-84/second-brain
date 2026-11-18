@@ -64,6 +64,8 @@ dependencies {
     testImplementation "junit:junit:$junitVersion"
     // Real org.json for JVM unit tests (the Android stub throws "not mocked").
     testImplementation "org.json:json:20250517"
+    // Reads the real signing certificates of release APKs in SignatureCheckTest.
+    testImplementation "com.android.tools.build:apksig:8.13.0"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')

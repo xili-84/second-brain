@@ -26,12 +26,9 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -352,10 +349,7 @@ public final class AppUpdaterPlugin extends Plugin {
 
     private void verifyUpdate(File apk) throws UpdateException {
         PackageManager manager = getContext().getPackageManager();
-        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
-                ? PackageManager.GET_SIGNING_CERTIFICATES
-                : signaturesFlag();
-        PackageInfo update = manager.getPackageArchiveInfo(apk.getAbsolutePath(), flags);
+        PackageInfo update = archivePackage(manager, apk);
 
         if (update == null || !getContext().getPackageName().equals(update.packageName)) {
             throw new UpdateException("The downloaded file is not a Second Brain update.");
@@ -364,7 +358,7 @@ public final class AppUpdaterPlugin extends Plugin {
         PackageInfo installed;
 
         try {
-            installed = installedPackage(flags);
+            installed = installedPackage(signingFlags());
         } catch (PackageManager.NameNotFoundException error) {
             throw new UpdateException("Version information is not available.");
         }
@@ -373,64 +367,82 @@ public final class AppUpdaterPlugin extends Plugin {
             throw new UpdateException("This version is already installed.");
         }
 
-        Set<String> installedCerts = certificateDigests(installed);
-        Set<String> updateCerts = certificateDigests(update);
+        SignatureCheck.Result result = SignatureCheck.compare(
+                SignatureCheck.digests(certificates(installed, false)),
+                SignatureCheck.digests(certificates(update, true))
+        );
 
-        // Before Android 9 archive signatures are often not reported; the installer still refuses
-        // an update signed with another key, so only compare when both sides are known.
-        boolean unknownArchiveSigner = Build.VERSION.SDK_INT < Build.VERSION_CODES.P && updateCerts.isEmpty();
-
-        if (!unknownArchiveSigner && (installedCerts.isEmpty() || !installedCerts.equals(updateCerts))) {
-            throw new UpdateException("The update is not signed with the Second Brain key, so it was not installed.");
+        if (result == SignatureCheck.Result.MISMATCH) {
+            throw new UpdateException(
+                    "The update is not signed with the Second Brain key, so it was not installed."
+            );
         }
+
+        // MATCH, or UNKNOWN when this phone does not report an APK file's signer: Android's
+        // installer refuses an update signed with a different key, so it gets the final say.
     }
 
+    /**
+     * Both flags on purpose: on several Android builds getPackageArchiveInfo leaves signingInfo
+     * null when only GET_SIGNING_CERTIFICATES is set, while GET_SIGNATURES still fills signatures.
+     */
     @SuppressWarnings("deprecation")
-    private static int signaturesFlag() {
-        return PackageManager.GET_SIGNATURES;
-    }
-
-    @SuppressWarnings("deprecation")
-    private static Set<String> certificateDigests(PackageInfo info) {
-        Signature[] signatures = null;
-
+    private static int signingFlags() {
+        int flags = PackageManager.GET_SIGNATURES;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            SigningInfo signingInfo = info.signingInfo;
-
-            if (signingInfo != null) {
-                signatures = signingInfo.hasMultipleSigners()
-                        ? signingInfo.getApkContentsSigners()
-                        : signingInfo.getSigningCertificateHistory();
-            }
-        } else {
-            signatures = info.signatures;
+            flags |= PackageManager.GET_SIGNING_CERTIFICATES;
         }
-
-        Set<String> digests = new HashSet<>();
-
-        if (signatures == null) {
-            return digests;
-        }
-
-        for (Signature signature : signatures) {
-            digests.add(sha256(signature.toByteArray()));
-        }
-
-        return digests;
+        return flags;
     }
 
-    private static String sha256(byte[] value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value);
-            StringBuilder hex = new StringBuilder(digest.length * 2);
+    @SuppressWarnings("deprecation")
+    private static PackageInfo archivePackage(PackageManager manager, File apk) {
+        String path = apk.getAbsolutePath();
+        PackageInfo info = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                ? manager.getPackageArchiveInfo(path, PackageManager.PackageInfoFlags.of(signingFlags()))
+                : manager.getPackageArchiveInfo(path, signingFlags());
 
-            for (byte part : digest) {
-                hex.append(String.format(Locale.ROOT, "%02x", part));
+        if (info != null && info.applicationInfo != null) {
+            // Archive info has no install location; some framework code paths expect one.
+            info.applicationInfo.sourceDir = path;
+            info.applicationInfo.publicSourceDir = path;
+        }
+
+        return info;
+    }
+
+    /**
+     * The encoded signing certificates, from signingInfo when present and from the legacy
+     * signatures field otherwise. For an update, past signers (key rotation) count too.
+     */
+    @SuppressWarnings("deprecation")
+    private static List<byte[]> certificates(PackageInfo info, boolean includeHistory) {
+        List<byte[]> result = new ArrayList<>();
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && info.signingInfo != null) {
+            SigningInfo signingInfo = info.signingInfo;
+            addAll(result, signingInfo.getApkContentsSigners());
+
+            if (includeHistory && !signingInfo.hasMultipleSigners()) {
+                addAll(result, signingInfo.getSigningCertificateHistory());
             }
+        }
 
-            return hex.toString();
-        } catch (NoSuchAlgorithmException error) {
-            return Arrays.toString(value);
+        if (result.isEmpty()) {
+            addAll(result, info.signatures);
+        }
+
+        return result;
+    }
+
+    private static void addAll(List<byte[]> into, Signature[] signatures) {
+        if (signatures == null) {
+            return;
+        }
+        for (Signature signature : signatures) {
+            if (signature != null) {
+                into.add(signature.toByteArray());
+            }
         }
     }
 
