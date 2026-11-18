@@ -85,7 +85,7 @@ public final class AppUpdaterPlugin extends Plugin {
     @PluginMethod
     public void downloadAndInstall(PluginCall call) {
         String url = call.getString("url");
-        long expectedSize = call.getLong("size", 0L);
+        long expectedSize = PluginArgs.positiveWholeNumber(call.getData().opt("size"));
 
         if (TextUtils.isEmpty(url) || !url.startsWith(ASSET_URL_PREFIX) || !url.endsWith(".apk")) {
             call.reject("This update can't be downloaded.");

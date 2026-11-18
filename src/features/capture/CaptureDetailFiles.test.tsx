@@ -168,7 +168,7 @@ describe('file capture detail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Download second-brain.apk' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The download link could not be created',
+      'Couldn’t download the file: A download link could not be created.',
     );
   });
 
@@ -217,7 +217,9 @@ describe('file capture detail', () => {
 
   it('reports a failed save to the phone', async () => {
     vi.mocked(isNativeFileSaveAvailable).mockReturnValue(true);
-    vi.mocked(saveFileToPhone).mockRejectedValue(new Error('x'));
+    vi.mocked(saveFileToPhone).mockRejectedValue(
+      new Error('The download link was refused (HTTP 400). Try again.'),
+    );
     const { client } = createClient();
     renderDetail(client);
     await screen.findByRole('heading', { name: 'Papers' });
@@ -225,7 +227,7 @@ describe('file capture detail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save Quarterly report.pdf to phone' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The file could not be saved to your phone',
+      'Couldn’t save the file to your phone: The download link was refused (HTTP 400). Try again.',
     );
   });
 

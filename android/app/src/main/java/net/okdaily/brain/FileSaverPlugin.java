@@ -122,16 +122,16 @@ public final class FileSaverPlugin extends Plugin {
         String fileName = call.getString("fileName");
         String mimeType = call.getString("mimeType");
         String sourceUrl = call.getString("url");
-        Long expectedSize = call.getLong("expectedSize");
+        // Not call.getLong: the bridge delivers sizes under 2 GB as Integer (see PluginArgs).
+        long expectedSize = PluginArgs.positiveWholeNumber(call.getData().opt("expectedSize"));
 
-        if (
-                TextUtils.isEmpty(fileName)
-                        || TextUtils.isEmpty(sourceUrl)
-                        || expectedSize == null
-                        || expectedSize <= 0L
-                        || expectedSize > MAX_FILE_BYTES
-        ) {
-            call.reject("The file download details are invalid.");
+        if (TextUtils.isEmpty(fileName) || TextUtils.isEmpty(sourceUrl) || expectedSize <= 0L) {
+            call.reject("The app sent incomplete file details. Please update Second Brain.");
+            return null;
+        }
+
+        if (expectedSize > MAX_FILE_BYTES) {
+            call.reject("This file is larger than 50 MB and can't be saved.");
             return null;
         }
 
@@ -143,7 +143,7 @@ public final class FileSaverPlugin extends Plugin {
                         || TextUtils.isEmpty(host)
                         || !host.toLowerCase(Locale.US).endsWith(".supabase.co")
         ) {
-            call.reject("Only private Supabase HTTPS files can be saved.");
+            call.reject("This download link isn't from Second Brain's storage.");
             return null;
         }
 
@@ -156,127 +156,206 @@ public final class FileSaverPlugin extends Plugin {
     }
 
     private void saveInBackground(PluginCall call, SaveRequest request) {
-        File temporaryFile = null;
-
         try {
-            temporaryFile = downloadToPrivateFile(request);
             Uri saved = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-                    ? publishWithMediaStore(temporaryFile, request)
-                    : publishLegacy(temporaryFile, request);
+                    ? saveWithMediaStore(request)
+                    : saveLegacy(request);
 
             JSObject result = new JSObject();
             result.put("location", PUBLIC_LOCATION);
             result.put("uri", saved.toString());
             call.resolve(result);
-        } catch (IOException | SecurityException | IllegalArgumentException error) {
-            call.reject("The file could not be saved to the phone.");
+        } catch (SaveException error) {
+            call.reject(error.getMessage());
+        } catch (java.net.UnknownHostException | java.net.SocketTimeoutException error) {
+            call.reject("No connection to the file storage. Check your internet and try again.");
+        } catch (IOException error) {
+            call.reject("The download was interrupted. Check your internet and try again.");
+        } catch (SecurityException | IllegalArgumentException | IllegalStateException error) {
+            call.reject("Android refused to save to Downloads: " + describe(error));
+        }
+    }
+
+    private static String describe(Throwable error) {
+        String message = error.getMessage();
+        return TextUtils.isEmpty(message) ? error.getClass().getSimpleName() : message;
+    }
+
+    /** Opens the signed link; the caller reads the body and must disconnect. */
+    private static HttpURLConnection openDownload(SaveRequest request) throws IOException, SaveException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(request.sourceUrl).openConnection();
+        connection.setConnectTimeout(20_000);
+        connection.setReadTimeout(60_000);
+        connection.setInstanceFollowRedirects(true);
+        connection.setRequestProperty("User-Agent", "SecondBrain-Android");
+        // Byte-exact body, so the length check below compares like with like.
+        connection.setRequestProperty("Accept-Encoding", "identity");
+
+        int responseCode = connection.getResponseCode();
+
+        if (responseCode < 200 || responseCode >= 300) {
+            connection.disconnect();
+
+            if (responseCode == 400 || responseCode == 401 || responseCode == 403) {
+                throw new SaveException(
+                        "The download link was refused (HTTP " + responseCode + "). Try again."
+                );
+            }
+
+            if (responseCode == 404) {
+                throw new SaveException("This file is no longer in storage (HTTP 404).");
+            }
+
+            throw new SaveException("The file storage answered HTTP " + responseCode + ". Try again later.");
+        }
+
+        long contentLength = connection.getContentLengthLong();
+
+        if (contentLength > MAX_FILE_BYTES) {
+            connection.disconnect();
+            throw new SaveException("This file is larger than 50 MB and can't be saved.");
+        }
+
+        return connection;
+    }
+
+    /** Streams the response into the output and checks that every byte arrived. */
+    private static void copyDownload(HttpURLConnection connection, SaveRequest request, OutputStream output)
+            throws IOException, SaveException {
+        long total = 0L;
+
+        try (InputStream input = connection.getInputStream()) {
+            byte[] buffer = new byte[64 * 1024];
+            int count;
+
+            while ((count = input.read(buffer)) != -1) {
+                total += count;
+
+                if (total > MAX_FILE_BYTES || total > request.expectedSize) {
+                    throw new SaveException("The downloaded file is bigger than expected. Try again.");
+                }
+
+                output.write(buffer, 0, count);
+            }
+
+            output.flush();
+        }
+
+        if (total != request.expectedSize) {
+            throw new SaveException("The download was incomplete. Check your internet and try again.");
+        }
+    }
+
+    /**
+     * Android 10+: streams the download straight into a pending Downloads entry, then publishes it.
+     * A failed download deletes the entry, so nothing half-written is ever visible in Downloads.
+     */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private Uri saveWithMediaStore(SaveRequest request) throws IOException, SaveException {
+        ContentResolver resolver = getContext().getContentResolver();
+        HttpURLConnection connection = openDownload(request);
+        Uri destination = null;
+
+        try {
+            destination = insertDownload(resolver, request.fileName, request.mimeType);
+
+            try (OutputStream output = resolver.openOutputStream(destination, "w")) {
+                if (output == null) {
+                    throw new SaveException("Android could not open the new file in Downloads.");
+                }
+
+                copyDownload(connection, request, output);
+            }
+
+            ContentValues completed = new ContentValues();
+            completed.put(MediaStore.Downloads.IS_PENDING, 0);
+
+            if (resolver.update(destination, completed, null, null) != 1) {
+                throw new SaveException("Android could not finish saving the file to Downloads.");
+            }
+
+            Uri saved = destination;
+            destination = null;
+            return saved;
         } finally {
-            if (temporaryFile != null) {
-                temporaryFile.delete();
+            connection.disconnect();
+
+            if (destination != null) {
+                try {
+                    resolver.delete(destination, null, null);
+                } catch (RuntimeException ignored) {
+                    // The pending entry expires on its own.
+                }
             }
         }
     }
 
-    private File downloadToPrivateFile(SaveRequest request) throws IOException {
+    /**
+     * Creates the pending entry. Some MIME types (or a MIME that doesn't match the extension) are
+     * refused by MediaStore on some phones, so it retries as a generic binary file.
+     */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private static Uri insertDownload(ContentResolver resolver, String fileName, String mimeType)
+            throws SaveException {
+        RuntimeException firstError = null;
+        String[] candidates = DEFAULT_MIME.equals(mimeType)
+                ? new String[] { DEFAULT_MIME }
+                : new String[] { mimeType, DEFAULT_MIME };
+
+        for (String candidate : candidates) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
+            values.put(MediaStore.Downloads.MIME_TYPE, candidate);
+            values.put(
+                    MediaStore.Downloads.RELATIVE_PATH,
+                    Environment.DIRECTORY_DOWNLOADS + File.separator + FOLDER_NAME
+            );
+            values.put(MediaStore.Downloads.IS_PENDING, 1);
+
+            try {
+                Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+
+                if (uri != null) {
+                    return uri;
+                }
+            } catch (IllegalArgumentException | IllegalStateException | SecurityException error) {
+                if (firstError == null) {
+                    firstError = error;
+                }
+            }
+        }
+
+        throw new SaveException(
+                "Android refused to create the file in Downloads"
+                        + (firstError == null ? "." : ": " + describe(firstError))
+        );
+    }
+
+    /** Android 9 and older: download to private cache first, then copy into Downloads. */
+    private Uri saveLegacy(SaveRequest request) throws IOException, SaveException {
         File directory = new File(getContext().getCacheDir(), TEMP_DIRECTORY);
 
         if (!directory.exists() && !directory.mkdirs()) {
-            throw new IOException("The private download directory could not be created.");
+            throw new SaveException("The app could not prepare a temporary file.");
         }
 
-        File target = new File(directory, UUID.randomUUID().toString());
-        HttpURLConnection connection = null;
-        long total = 0L;
+        File temporary = new File(directory, UUID.randomUUID().toString());
+        HttpURLConnection connection = openDownload(request);
 
         try {
-            connection = (HttpURLConnection) new URL(request.sourceUrl).openConnection();
-            connection.setConnectTimeout(20_000);
-            connection.setReadTimeout(60_000);
-            connection.setInstanceFollowRedirects(true);
-
-            int responseCode = connection.getResponseCode();
-
-            if (responseCode < 200 || responseCode >= 300) {
-                throw new IOException("The private file download failed.");
+            try (FileOutputStream output = new FileOutputStream(temporary)) {
+                copyDownload(connection, request, output);
             }
 
-            long contentLength = connection.getContentLengthLong();
-
-            if (contentLength > MAX_FILE_BYTES) {
-                throw new IOException("The private file is too large.");
+            try {
+                return publishLegacy(temporary, request);
+            } catch (IOException error) {
+                throw new SaveException("Couldn't write to Downloads: " + describe(error));
             }
-
-            try (
-                    InputStream input = connection.getInputStream();
-                    FileOutputStream output = new FileOutputStream(target)
-            ) {
-                byte[] buffer = new byte[32 * 1024];
-                int count;
-
-                while ((count = input.read(buffer)) != -1) {
-                    total += count;
-
-                    if (total > MAX_FILE_BYTES) {
-                        throw new IOException("The private file is too large.");
-                    }
-
-                    output.write(buffer, 0, count);
-                }
-            }
-
-            if (total != request.expectedSize) {
-                throw new IOException("The private file download is incomplete.");
-            }
-
-            return target;
-        } catch (IOException error) {
-            target.delete();
-            throw error;
         } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
+            connection.disconnect();
+            temporary.delete();
         }
-    }
-
-    @RequiresApi(Build.VERSION_CODES.Q)
-    private Uri publishWithMediaStore(File source, SaveRequest request) throws IOException {
-        ContentResolver resolver = getContext().getContentResolver();
-        ContentValues values = new ContentValues();
-        values.put(MediaStore.Downloads.DISPLAY_NAME, request.fileName);
-        values.put(MediaStore.Downloads.MIME_TYPE, request.mimeType);
-        values.put(
-                MediaStore.Downloads.RELATIVE_PATH,
-                Environment.DIRECTORY_DOWNLOADS + File.separator + FOLDER_NAME
-        );
-        values.put(MediaStore.Downloads.IS_PENDING, 1);
-
-        Uri destination = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-
-        if (destination == null) {
-            throw new IOException("Android could not create the destination file.");
-        }
-
-        try (OutputStream output = resolver.openOutputStream(destination, "w")) {
-            if (output == null) {
-                throw new IOException("Android could not open the destination file.");
-            }
-
-            copyFile(source, output);
-        } catch (IOException error) {
-            resolver.delete(destination, null, null);
-            throw error;
-        }
-
-        ContentValues completed = new ContentValues();
-        completed.put(MediaStore.Downloads.IS_PENDING, 0);
-
-        if (resolver.update(destination, completed, null, null) != 1) {
-            resolver.delete(destination, null, null);
-            throw new IOException("Android could not publish the destination file.");
-        }
-
-        return destination;
     }
 
     @SuppressWarnings("deprecation")
@@ -285,7 +364,7 @@ public final class FileSaverPlugin extends Plugin {
         File folder = new File(downloads, FOLDER_NAME);
 
         if (!folder.exists() && !folder.mkdirs()) {
-            throw new IOException("The Downloads folder could not be created.");
+            throw new IOException("The Downloads/Second Brain folder could not be created.");
         }
 
         File destination = uniqueFile(folder, request.fileName);
@@ -362,6 +441,13 @@ public final class FileSaverPlugin extends Plugin {
         }
 
         return leafName;
+    }
+
+    /** A failure whose message is shown to the user as is. */
+    private static final class SaveException extends Exception {
+        private SaveException(String message) {
+            super(message);
+        }
     }
 
     private static final class SaveRequest {

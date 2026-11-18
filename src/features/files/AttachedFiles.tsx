@@ -11,6 +11,7 @@ import type { StoredImageAttachment } from '../capture/imageStorage';
 import { FileCard } from './FileCard';
 import { fileCategory } from './fileInfo';
 import { isNativeFileSaveAvailable, openSavedFile, saveFileToPhone } from './nativeFileSaver';
+import { saveErrorMessage } from './saveError';
 
 type AttachedFilesProps = {
   attachments: StoredImageAttachment[];
@@ -79,12 +80,8 @@ export function AttachedFiles({ attachments, client, onError, onMessage }: Attac
         link.click();
         link.remove();
       }
-    } catch {
-      onError(
-        isNative
-          ? 'The file could not be saved to your phone. Please check your connection and retry.'
-          : 'The download link could not be created. Please retry.',
-      );
+    } catch (error) {
+      onError(saveErrorMessage(error, isNative));
     } finally {
       busy.current = false;
       setBusyId(null);
