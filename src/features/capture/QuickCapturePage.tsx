@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { ActionBar } from '../../components/ActionBar';
 import { Notice } from '../../components/Notice';
 import { TopBar } from '../../components/TopBar';
+import { useComposerFocus } from '../../components/useComposerFocus';
 
 import { useAuth } from '../auth/authContext';
 import { loadPendingSharedImage, pendingSharedImages } from '../share-target/nativeShare';
@@ -45,6 +46,7 @@ export function QuickCapturePage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasSaved, setHasSaved] = useState(false);
+  const noteField = useRef<HTMLTextAreaElement>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const drafts = useImageDrafts();
   const fileDrafts = useFileDrafts();
@@ -395,6 +397,12 @@ export function QuickCapturePage() {
     }
   }
 
+  // Focus the note without scrolling, and keep its top and the header visible as the keyboard opens.
+  useComposerFocus(noteField, {
+    autoFocus: !pendingShare,
+    enabled: draft.kind === 'note' && !hasSaved,
+  });
+
   const isValidatingImage = drafts.isValidating || isLoadingShare;
   const isBusy = isSubmitting || isValidatingImage;
   const uploading = (draft.kind === 'file' ? fileDrafts.files : drafts.images).filter(
@@ -460,11 +468,11 @@ export function QuickCapturePage() {
           {draft.kind === 'note' && (
             <textarea
               aria-label="Note"
-              autoFocus={!pendingShare}
               className="composer__body"
               disabled={isSubmitting}
               onChange={(event) => updateDraft({ content: event.target.value })}
               placeholder="What do you want to remember?"
+              ref={noteField}
               rows={8}
               value={draft.content}
             />

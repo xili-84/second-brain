@@ -1,6 +1,7 @@
-import type { FormEvent } from 'react';
+import { useRef, type FormEvent } from 'react';
 
 import { ActionBar } from '../../../components/ActionBar';
+import { useComposerFocus } from '../../../components/useComposerFocus';
 import type { CaptureDraft } from '../captureDraft';
 
 type CaptureEditFormProps = {
@@ -25,6 +26,9 @@ export function CaptureEditForm({
   savingLabel = null,
 }: CaptureEditFormProps) {
   const hasText = draft.kind === 'note' || draft.kind === 'image' || draft.kind === 'file';
+  const noteField = useRef<HTMLTextAreaElement>(null);
+  // No autofocus here; only guard the header when the keyboard opens for a tapped field.
+  useComposerFocus(noteField, { autoFocus: false, enabled: hasText });
 
   return (
     <form className="composer" onSubmit={onSubmit}>
@@ -45,6 +49,7 @@ export function CaptureEditForm({
           disabled={isBusy}
           onChange={(event) => onChange({ content: event.target.value })}
           placeholder={draft.kind === 'image' || draft.kind === 'file' ? 'Note (optional)' : 'Note'}
+          ref={noteField}
           rows={10}
           value={draft.content}
         />
